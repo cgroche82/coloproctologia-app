@@ -14,7 +14,7 @@ def next_id(db: Session = Depends(get_db), _: Usuario = Depends(get_current_user
     return {"next_id": (last.id + 1) if last else 1}
 
 
-@router.post("/", response_model=GeneralOut)
+@router.post("", response_model=GeneralOut)
 def create(data: GeneralCreate, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
     record = CirugiaGeneral(**data.model_dump(), created_by=user.username)
     db.add(record)
@@ -23,7 +23,7 @@ def create(data: GeneralCreate, db: Session = Depends(get_db), user: Usuario = D
     return record
 
 
-@router.get("/", response_model=dict)
+@router.get("", response_model=dict)
 def list_all(
     page: int = 1,
     page_size: int = 20,
