@@ -197,9 +197,12 @@
       </button>
       <h1 id="page-title" class="text-lg font-bold text-gray-900 truncate">Nuevo Registro</h1>
     </div>
-    <!-- Centro: nombre unidad -->
-    <div class="absolute left-1/2 -translate-x-1/2 hidden md:flex flex-col items-center pointer-events-none select-none">
-      <span class="text-xs font-semibold tracking-wide text-gray-400 uppercase">Unidad de Cirugía Coloproctología · HUMS</span>
+    <!-- Centro: logo + nombre unidad -->
+    <div class="absolute left-1/2 -translate-x-1/2 hidden md:flex items-center gap-2 pointer-events-none select-none">
+      <img src="/static/logo_hums.jpg" alt="HUMS"
+           style="height:38px;width:auto;object-fit:contain;border-radius:4px;opacity:.92"
+           onerror="this.style.display='none'"/>
+      <span class="text-xs font-semibold tracking-wide uppercase" style="color:#00897B">Unidad de Cirugía Coloproctología · HUMS</span>
     </div>
     <div class="flex items-center gap-3 flex-shrink-0">
       <span id="user-badge" class="text-sm text-gray-500 hidden sm:inline"></span>
