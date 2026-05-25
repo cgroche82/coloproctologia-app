@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Registro Quirúrgico · Coloproctología</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --navy: #0D2B4E;
+    --colorrectal: #1565C0;
+    --proctologia: #2E7D32;
+    --funcionales: #6A1B9A;
+    --general: #E65100;
+  }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #F1F5F9; }
+  .sidebar { background: var(--navy); min-height: 100vh; width: 64px; transition: width .3s; }
+  .sidebar.expanded { width: 220px; }
+  .nav-item { display:flex; align-items:center; gap:12px; padding:12px 20px; color:#94A3B8;
+    cursor:pointer; transition:.2s; white-space:nowrap; overflow:hidden; border-radius:8px; margin:2px 8px; }
+  .nav-item:hover,.nav-item.active { background:rgba(255,255,255,.1); color:#fff; }
+  .nav-label { opacity:0; transition:opacity .2s; font-size:14px; font-weight:500; }
+  .sidebar.expanded .nav-label { opacity:1; }
+  .sidebar.expanded .sidebar-logo-text { opacity:1; }
+  .sidebar-logo-text { opacity:0; transition:opacity .2s; font-size:13px; font-weight:700; color:#fff; }
+  .card { background:#fff; border-radius:12px; box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px;
+    font-size:14px; font-weight:500; cursor:pointer; transition:.15s; border:none; }
+  .btn-primary { background:#1565C0; color:#fff; }
+  .btn-primary:hover { background:#0D47A1; }
+  .btn-success { background:#2E7D32; color:#fff; }
+  .btn-success:hover { background:#1B5E20; }
+  .btn-danger { background:#C62828; color:#fff; }
+  .btn-danger:hover { background:#B71C1C; }
+  .btn-ghost { background:transparent; color:#64748B; border:1px solid #E2E8F0; }
+  .btn-ghost:hover { background:#F8FAFC; }
+  .btn-orange { background:#E65100; color:#fff; }
+  .btn-orange:hover { background:#BF360C; }
+  .input { width:100%; padding:8px 12px; border:1px solid #E2E8F0; border-radius:8px;
+    font-size:14px; background:#fff; transition:.15s; }
+  .input:focus { outline:none; border-color:#1565C0; box-shadow:0 0 0 3px rgba(21,101,192,.1); }
+  select.input { cursor:pointer; }
+  .label { font-size:13px; font-weight:600; color:#374151; margin-bottom:4px; display:block; }
+  .badge { display:inline-flex; align-items:center; padding:2px 10px; border-radius:99px;
+    font-size:12px; font-weight:600; }
+  table { width:100%; border-collapse:collapse; }
+  th { background:#F8FAFC; font-size:12px; font-weight:700; color:#64748B; text-transform:uppercase;
+    letter-spacing:.05em; padding:10px 12px; text-align:left; border-bottom:1px solid #E2E8F0; }
+  td { padding:10px 12px; font-size:14px; color:#374151; border-bottom:1px solid #F1F5F9; }
+  tr:hover td { background:#F8FAFC; }
+  tr:nth-child(even) td { background:#FAFAFA; }
+  tr:nth-child(even):hover td { background:#F1F5F9; }
+  .progress-step { display:flex; align-items:center; flex:1; }
+  .step-circle { width:32px; height:32px; border-radius:50%; display:flex; align-items:center;
+    justify-content:center; font-size:13px; font-weight:700; flex-shrink:0; transition:.2s; }
+  .step-done { background:#2E7D32; color:#fff; }
+  .step-active { background:#1565C0; color:#fff; }
+  .step-pending { background:#E2E8F0; color:#94A3B8; }
+  .step-line { flex:1; height:2px; background:#E2E8F0; margin:0 4px; }
+  .step-line.done { background:#2E7D32; }
+  .tab-btn { padding:8px 16px; border-radius:8px; font-size:14px; font-weight:500;
+    cursor:pointer; border:none; background:transparent; color:#64748B; transition:.15s; }
+  .tab-btn.active { color:#fff; }
+  .tab-btn-colorrectal.active { background:#1565C0; }
+  .tab-btn-proctologia.active { background:#2E7D32; }
+  .tab-btn-funcionales.active { background:#6A1B9A; }
+  .tab-btn-general.active { background:#E65100; }
+  .tab-btn-todos.active { background:#0D2B4E; }
+  .section { display:none; }
+  .section.active { display:block; }
+  #login-screen { position:fixed; inset:0; background:var(--navy); display:flex;
+    align-items:center; justify-content:center; z-index:999; }
+  .stat-card { background:#fff; border-radius:12px; padding:20px; box-shadow:0 1px 4px rgba(0,0,0,.08);
+    border-left:4px solid; }
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100;
+    display:none; align-items:center; justify-content:center; }
+  .modal-overlay.open { display:flex; }
+  @media (max-width:768px) {
+    .sidebar { width:0; }
+    .sidebar.expanded { width:220px; position:fixed; z-index:50; }
+  }
+</style>
+</head>
+<body class="flex">
+
+<!-- ─── LOGIN ─────────────────────────────────────────────────── -->
+<div id="login-screen">
+  <div class="card p-10 w-full max-w-sm mx-4">
+    <div class="text-center mb-8">
+      <div class="w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center" style="background:var(--navy)">
+        <svg class="w-9 h-9 text-white" fill="none" stroke="white" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+      </div>
+      <h1 class="text-xl font-bold text-gray-900">Coloproctología</h1>
+      <p class="text-sm text-gray-500 mt-1">Registro Quirúrgico Hospitalario</p>
+    </div>
+    <div class="space-y-4">
+      <div>
+        <label class="label">Usuario</label>
+        <input id="login-user" type="text" class="input" placeholder="usuario" value="admin"/>
+      </div>
+      <div>
+        <label class="label">Contraseña</label>
+        <input id="login-pass" type="password" class="input" placeholder="••••••••" value="coloproct2024"/>
+      </div>
+      <div id="login-error" class="text-red-600 text-sm hidden"></div>
+      <button onclick="doLogin()" class="btn btn-primary w-full justify-center py-3">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14"/>
+        </svg>
+        Iniciar sesión
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SIDEBAR ────────────────────────────────────────────────── -->
+<div id="sidebar" class="sidebar flex-shrink-0 flex flex-col py-4 relative z-40">
+  <div class="flex items-center gap-3 px-4 mb-8 cursor-pointer" onclick="toggleSidebar()">
+    <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style="background:rgba(255,255,255,.15)">
+      <svg class="w-5 h-5 text-white" fill="none" stroke="white" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>
+    </div>
+    <span class="sidebar-logo-text">Coloproctología</span>
+  </div>
+
+  <nav class="flex-1 space-y-1">
+    <div class="nav-item active" onclick="showSection('formulario')" data-section="formulario">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+      </svg>
+      <span class="nav-label">Nuevo Registro</span>
+    </div>
+    <div class="nav-item" onclick="showSection('database')" data-section="database">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+      </svg>
+      <span class="nav-label">Base de Datos</span>
+    </div>
+    <div class="nav-item" onclick="showSection('dashboard')" data-section="dashboard">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+      </svg>
+      <span class="nav-label">Dashboard</span>
+    </div>
+    <div class="nav-item" onclick="showSection('export')" data-section="export">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+      </svg>
+      <span class="nav-label">Exportación</span>
+    </div>
+    <div id="nav-admin" class="nav-item hidden" onclick="showSection('admin')" data-section="admin">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/>
+      </svg>
+      <span class="nav-label">Usuarios</span>
+    </div>
+  </nav>
+
+  <div class="px-3 mt-4">
+    <div class="nav-item" onclick="doLogout()">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+      </svg>
+      <span class="nav-label text-red-400">Cerrar sesión</span>
+    </div>
+  </div>
+</div>
+
+<!-- ─── MAIN CONTENT ──────────────────────────────────────────── -->
+<div class="flex-1 overflow-auto">
+  <!-- Topbar -->
+  <div class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between sticky top-0 z-30">
+    <div class="flex items-center gap-3">
+      <button class="md:hidden btn btn-ghost p-2" onclick="toggleSidebar()">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+      <h1 id="page-title" class="text-lg font-bold text-gray-900">Nuevo Registro</h1>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="user-badge" class="text-sm text-gray-500"></span>
+    </div>
+  </div>
+
+  <div class="p-6">
+
+    <!-- ══════════════════ FORMULARIO ══════════════════ -->
+    <div id="section-formulario" class="section active">
+      <!-- Progress bar -->
+      <div class="card p-6 mb-6">
+        <div class="flex items-center">
+          <div class="progress-step">
+            <div id="step-circle-1" class="step-circle step-active">1</div>
+            <div id="step-line-1" class="step-line"></div>
+          </div>
+          <div class="progress-step">
+            <div id="step-circle-2" class="step-circle step-pending">2</div>
+            <div id="step-line-2" class="step-line"></div>
+          </div>
+          <div class="progress-step">
+            <div id="step-circle-3" class="step-circle step-pending">3</div>
+            <div id="step-line-3" class="step-line"></div>
+          </div>
+          <div class="progress-step" style="flex:none">
+            <div id="step-circle-4" class="step-circle step-pending">4</div>
+          </div>
+        </div>
+        <div class="flex justify-between mt-2 text-xs font-600 text-gray-500">
+          <span>Identificación</span><span>Procedimiento</span><span>Postoperatorio</span><span>Oncológico</span>
+        </div>
+      </div>
+
+      <!-- Steps -->
+      <div class="card p-6">
+        <!-- PASO 1 -->
+        <div id="form-step-1">
+          <h2 class="text-lg font-bold text-gray-900 mb-6 pb-3 border-b">Paso 1 — Identificación del Paciente</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label class="label">Nº Caso <span class="text-gray-400 font-normal">(automático)</span></label>
+              <input id="f-id" type="text" class="input bg-gray-50" readonly placeholder="Auto"/>
+            </div>
+            <div>
+              <label class="label">NHC <span class="text-red-500">*</span></label>
+              <input id="f-nhc" type="text" class="input" placeholder="Historia clínica"/>
+            </div>
+            <div>
+              <label class="label">Fecha Intervención <span class="text-red-500">*</span></label>
+              <input id="f-fecha-intervencion" type="date" class="input" onchange="calcEdad();calcEstancia()"/>
+            </div>
+            <div>
+              <label class="label">Fecha Nacimiento <span class="text-red-500">*</span></label>
+              <input id="f-fecha-nacimiento" type="date" class="input" onchange="calcEdad()"/>
+            </div>
+            <div>
+              <label class="label">Edad (calculada)</label>
+              <input id="f-edad" type="text" class="input bg-gray-50" readonly placeholder="—"/>
+            </div>
+            <div>
+              <label class="label">Sexo <span class="text-red-500">*</span></label>
+              <select id="f-sexo" class="input">
+                <option value="">— Seleccionar —</option>
+                <option>Masculino</option><option>Femenino</option>
+              </select>
+            </div>
+            <div>
+              <label class="label">ASA <span class="text-red-500">*</span></label>
+              <select id="f-asa" class="input">
+                <option value="">— Seleccionar —</option>
+                <option>I</option><option>II</option><option>III</option><option>IV</option><option>V</option>
+              </select>
+            </div>
+            <div class="md:col-span-2">
+              <label class="label">Cirujano <span class="text-red-500">*</span></label>
+              <select id="f-cirujano" class="input">
+                <option value="">— Seleccionar —</option>
+                <option>DR. MARTÍNEZ</option><option>DR. GRACIA</option><option>DRA. SÁNCHEZ</option>
+                <option>DR. SAUDÍ</option><option>DRA. PÉREZ</option><option>DR. LAGUNAS</option>
+                <option>DRA. GASCÓN</option><option>DRA. SANTERO</option><option>DRA. MATUTE</option>
+                <option>DRA. MORENO</option><option>DRA. GIMÉNEZ</option><option>DRA. DE MIGUEL</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- PASO 2 -->
+        <div id="form-step-2" class="hidden">
+          <h2 class="text-lg font-bold text-gray-900 mb-6 pb-3 border-b">Paso 2 — Procedimiento</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label class="label">Tipo Cirugía <span class="text-red-500">*</span></label>
+              <select id="f-tipo-cirugia" class="input" onchange="onTipoCirugia()">
+                <option value="">— Seleccionar —</option>
+                <option value="colorrectal">Cirugía Colorrectal</option>
+                <option value="proctologia">Proctología</option>
+                <option value="funcionales">Trastornos Funcionales</option>
+                <option value="general">Cirugía General</option>
+              </select>
+            </div>
+            <div>
+              <label class="label">Ingreso / CMA</label>
+              <select id="f-ingreso-cma" class="input">
+                <option value="">— Seleccionar —</option>
+                <option>Ingreso</option><option>CMA</option>
+              </select>
+            </div>
+            <div>
+              <label class="label">Diagnóstico <span class="text-red-500">*</span></label>
+              <select id="f-diagnostico" class="input" onchange="onDiagnostico()">
+                <option value="">— Seleccione tipo primero —</option>
+              </select>
+            </div>
+            <div>
+              <label class="label">Intervención <span class="text-red-500">*</span></label>
+              <select id="f-intervencion" class="input">
+                <option value="">— Seleccione diagnóstico —</option>
+              </select>
+            </div>
+            <div>
+              <label class="label">Urgencia</label>
+              <select id="f-urgencia" class="input">
+                <option value="">— Seleccionar —</option>
+                <option>Programada</option><option>Urgente</option>
+              </select>
+            </div>
+            <div>
+              <label class="label">Abordaje</label>
+              <select id="f-abordaje" class="input" onchange="onAbordaje()">
+                <option value="">— Seleccionar —</option>
+                <option>Laparoscopia</option><option>Robótico</option><option>Laparotomía</option>
+                <option>Vía Perineal</option><option>Transanal</option>
+              </select>
+            </div>
+            <div id="wrap-conversion" class="hidden">
+              <label class="label">Conversión</label>
+              <select id="f-conversion" class="input">
+                <option value="">— Seleccionar —</option>
+                <option>Si</option><option>No</option>
+              </select>
+            </div>
+            <div>
+              <label class="label">Tiempo Quirúrgico (min)</label>
+              <input id="f-tiempo-quirurgico" type="number" min="0" class="input" placeholder="minutos"/>
+            </div>
+            <div id="wrap-estoma" class="hidden">
+              <label class="label">Estoma de Protección</label>
+              <select id="f-estoma-proteccion" class="input">
+                <option value="">— Seleccionar —</option>
+                <option>Si</option><option>No</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- PASO 3 -->
+        <div id="form-step-3" class="hidden">
+          <h2 class="text-lg font-bold text-gray-900 mb-6 pb-3 border-b">Paso 3 — Postoperatorio</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label class="label">Clavien-Dindo</label>
+              <select id="f-clavien-dindo" class="input">
+                <option value="">— Seleccionar —</option>
+                <option>0</option><option>I</option><option>II</option>
+                <option>IIIa</option><option>IIIb</option><option>IVa</option><option>IVb</option><option>V</option>
+              </select>
+            </div>
+            <div id="wrap-dehiscencia" class="hidden">
+              <label class="label">Dehiscencia Anastomosis</label>
+              <select id="f-dehiscencia" class="input" onchange="onDehiscencia()">
+                <option value="">— Seleccionar —</option>
+                <option>Si</option><option>No</option>
+              </select>
+            </div>
+            <div id="wrap-tipo-dehiscencia" class="hidden">
+              <label class="label">Tipo Dehiscencia</label>
+              <select id="f-tipo-dehiscencia" class="input">
+                <option value="">— Seleccionar —</option>
+                <option>A</option><option>B</option><option>C</option>
+              </select>
+            </div>
+            <div>
+              <label class="label">Tipo Complicación</label>
+              <select id="f-tipo-complicacion" class="input">
+                <option value="">— Sin complicación —</option>
+                <option>Infección herida</option><option>Íleo</option>
+                <option>Absceso intraabdominal</option><option>Hemorragia</option><option>Médica</option>
+              </select>
+            </div>
+            <div>
+              <label class="label">Intervencionismo</label>
+              <select id="f-intervencionismo" class="input">
+                <option value="">— Seleccionar —</option>
+                <option>No</option><option>Endoscopia</option>
+                <option>Drenaje Percutáneo</option><option>Embolización</option>
+              </select>
+            </div>
+            <div>
+              <label class="label">Reintervención</label>
+              <select id="f-reintervencion" class="input" onchange="onReintervencion()">
+                <option value="">— Seleccionar —</option>
+                <option>Si</option><option>No</option>
+              </select>
+            </div>
+            <div id="wrap-tipo-reintervencion" class="hidden">
+              <label class="label">Tipo Reintervención</label>
+              <input id="f-tipo-reintervencion" type="text" class="input" placeholder="Describir"/>
+            </div>
+            <div>
+              <label class="label">Mortalidad</label>
+              <select id="f-mortalidad" class="input" onchange="onMortalidad()">
+                <option value="">— Seleccionar —</option>
+                <option>Si</option><option>No</option>
+              </select>
+            </div>
+            <div id="wrap-causa-mortalidad" class="hidden">
+              <label class="label">Causa Mortalidad</label>
+              <input id="f-causa-mortalidad" type="text" class="input" placeholder="Causa"/>
+            </div>
+            <div>
+              <label class="label">Fecha Alta</label>
+              <input id="f-fecha-alta" type="date" class="input" onchange="calcEstancia()"/>
+            </div>
+            <div>
+              <label class="label">Estancia (días, calculada)</label>
+              <input id="f-estancia" type="text" class="input bg-gray-50" readonly placeholder="—"/>
+            </div>
+            <div>
+              <label class="label">Reingreso 30 días</label>
+              <select id="f-reingreso-30d" class="input">
+                <option value="">— Seleccionar —</option>
+                <option>Si</option><option>No</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- PASO 4 -->
+        <div id="form-step-4" class="hidden">
+          <h2 class="text-lg font-bold text-gray-900 mb-6 pb-3 border-b">Paso 4 — Oncológico · Seguimiento · Observaciones</h2>
+
+          <!-- Oncológico (solo colorrectal + neoplasia) -->
+          <div id="wrap-oncologico" class="hidden">
+            <h3 class="font-semibold text-blue-800 mb-4 flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-blue-600 inline-block"></span>
+              Datos Oncológicos
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+              <div>
+                <label class="label">T (TNM)</label>
+                <select id="f-t-tnm" class="input" onchange="calcEstadioTNM()">
+                  <option value="">—</option>
+                  <option>Tis</option><option>T1</option><option>T2</option><option>T3</option><option>T4a</option><option>T4b</option>
+                </select>
+              </div>
+              <div>
+                <label class="label">N (TNM)</label>
+                <select id="f-n-tnm" class="input" onchange="calcEstadioTNM()">
+                  <option value="">—</option>
+                  <option>N0</option><option>N1</option><option>N1a</option><option>N1b</option><option>N1c</option>
+                  <option>N2a</option><option>N2b</option>
+                </select>
+              </div>
+              <div>
+                <label class="label">M (TNM)</label>
+                <select id="f-m-tnm" class="input" onchange="calcEstadioTNM()">
+                  <option value="">—</option>
+                  <option>M0</option><option>M1a</option><option>M1b</option><option>M1c</option>
+                </select>
+              </div>
+              <div>
+                <label class="label">Estadio TNM (AJCC 8ª)</label>
+                <input id="f-estadio-tnm" type="text" class="input bg-blue-50 font-bold" readonly placeholder="—"/>
+              </div>
+              <div>
+                <label class="label">Localización</label>
+                <select id="f-localizacion" class="input" onchange="onLocalizacion()">
+                  <option value="">—</option>
+                  <option>Colon Derecho</option><option>Colon Transverso</option><option>Colon Izquierdo</option>
+                  <option>Sigma</option><option>Recto</option><option>Ano</option>
+                </select>
+              </div>
+              <div id="wrap-dist-margen" class="hidden">
+                <label class="label">Distancia Margen Anal (cm)</label>
+                <input id="f-distancia-margen-anal" type="number" step="0.1" min="0" class="input"/>
+              </div>
+              <div>
+                <label class="label">Neoadyuvancia</label>
+                <select id="f-neoadyuvancia" class="input" onchange="onNeoadyuvancia()">
+                  <option value="">—</option><option>Si</option><option>No</option>
+                </select>
+              </div>
+              <div id="wrap-tipo-neo" class="hidden">
+                <label class="label">Tipo Neoadyuvancia</label>
+                <select id="f-tipo-neoadyuvancia" class="input">
+                  <option value="">—</option>
+                  <option>TNT</option><option>QT+RT Convencional</option><option>QT</option><option>Inmunoterapia</option>
+                </select>
+              </div>
+              <div id="wrap-pcr" class="hidden">
+                <label class="label">pCR (Resp. Completa)</label>
+                <select id="f-pcr" class="input">
+                  <option value="">—</option><option>Si</option><option>No</option>
+                </select>
+              </div>
+              <div>
+                <label class="label">Tipo Histológico</label>
+                <select id="f-tipo-histologico" class="input">
+                  <option value="">—</option>
+                  <option>Convencional</option><option>Mucinoso</option><option>Escamoso</option>
+                </select>
+              </div>
+              <div>
+                <label class="label">Grado</label>
+                <select id="f-grado" class="input">
+                  <option value="">—</option><option>G1</option><option>G2</option><option>G3</option>
+                </select>
+              </div>
+              <div>
+                <label class="label">Márgenes Libres</label>
+                <select id="f-margenes-libres" class="input">
+                  <option value="">—</option><option>Si</option><option>No</option>
+                </select>
+              </div>
+              <div>
+                <label class="label">Nº Ganglios Analizados</label>
+                <input id="f-ganglios-analizados" type="number" min="0" class="input"/>
+              </div>
+              <div>
+                <label class="label">Nº Ganglios Positivos</label>
+                <input id="f-ganglios-positivos" type="number" min="0" class="input"/>
+              </div>
+              <div>
+                <label class="label">Invasión Linfovascular</label>
+                <select id="f-invasion-linfovascular" class="input">
+                  <option value="">—</option><option>Si</option><option>No</option>
+                </select>
+              </div>
+              <div>
+                <label class="label">Invasión Perineural</label>
+                <select id="f-invasion-perineural" class="input">
+                  <option value="">—</option><option>Si</option><option>No</option>
+                </select>
+              </div>
+              <div>
+                <label class="label">MSI</label>
+                <select id="f-msi" class="input">
+                  <option value="">—</option>
+                  <option>Estable</option><option>Inestable</option><option>No determinado</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Seguimiento oncológico -->
+            <h3 class="font-semibold text-blue-800 mb-4 flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-blue-600 inline-block"></span>
+              Seguimiento Oncológico
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+              <div>
+                <label class="label">Adyuvancia</label>
+                <select id="f-adyuvancia" class="input" onchange="onAdyuvancia()">
+                  <option value="">—</option><option>Si</option><option>No</option>
+                </select>
+              </div>
+              <div id="wrap-tipo-adyuvancia" class="hidden">
+                <label class="label">Tipo Adyuvancia</label>
+                <select id="f-tipo-adyuvancia" class="input">
+                  <option value="">—</option><option>QT</option><option>RT</option><option>QT+RT</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto mb-6">
+              <table class="text-sm">
+                <thead>
+                  <tr>
+                    <th>Intervalo</th>
+                    <th>Recidiva</th>
+                    <th>Tipo Recidiva</th>
+                  </tr>
+                </thead>
+                <tbody id="recidiva-table">
+                </tbody>
+              </table>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div>
+                <label class="label">Fecha Éxitus</label>
+                <input id="f-fecha-exitus" type="date" class="input"/>
+              </div>
+            </div>
+          </div>
+
+          <!-- Observaciones -->
+          <div>
+            <label class="label">Observaciones</label>
+            <textarea id="f-observaciones" class="input h-28 resize-none" placeholder="Notas clínicas adicionales..."></textarea>
+          </div>
+        </div>
+
+        <!-- Navigation buttons -->
+        <div class="flex justify-between mt-8 pt-4 border-t">
+          <div>
+            <button id="btn-prev" onclick="prevStep()" class="btn btn-ghost hidden">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+              </svg>
+              Anterior
+            </button>
+          </div>
+          <div class="flex gap-3">
+            <button onclick="clearForm()" class="btn btn-ghost">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+              Limpiar
+            </button>
+            <button id="btn-next" onclick="nextStep()" class="btn btn-primary">
+              Siguiente
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+              </svg>
+            </button>
+            <button id="btn-save" onclick="saveRecord()" class="btn btn-success hidden">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+              </svg>
+              Guardar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════ BASE DE DATOS ══════════════════ -->
+    <div id="section-database" class="section">
+      <div class="card p-4 mb-4">
+        <div class="flex flex-wrap gap-3 items-center">
+          <input id="db-search-nhc" type="text" class="input w-48" placeholder="Buscar NHC..."
+            onkeyup="if(event.key==='Enter') searchAllNHC()"/>
+          <button onclick="searchAllNHC()" class="btn btn-primary">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0"/>
+            </svg>
+            Buscar
+          </button>
+          <input id="db-filter-fecha-desde" type="date" class="input w-44" placeholder="Desde"/>
+          <input id="db-filter-fecha-hasta" type="date" class="input w-44" placeholder="Hasta"/>
+          <select id="db-filter-cirujano" class="input w-48">
+            <option value="">Todos los cirujanos</option>
+            <option>DR. MARTÍNEZ</option><option>DR. GRACIA</option><option>DRA. SÁNCHEZ</option>
+            <option>DR. SAUDÍ</option><option>DRA. PÉREZ</option><option>DR. LAGUNAS</option>
+            <option>DRA. GASCÓN</option><option>DRA. SANTERO</option><option>DRA. MATUTE</option>
+            <option>DRA. MORENO</option><option>DRA. GIMÉNEZ</option><option>DRA. DE MIGUEL</option>
+          </select>
+          <select id="db-filter-asa" class="input w-28">
+            <option value="">ASA</option>
+            <option>I</option><option>II</option><option>III</option><option>IV</option><option>V</option>
+          </select>
+          <button onclick="applyFilters()" class="btn btn-primary">Filtrar</button>
+          <button onclick="clearFilters()" class="btn btn-ghost">Limpiar</button>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex gap-1 mb-4 flex-wrap">
+        <button class="tab-btn tab-btn-todos active" onclick="switchDbTab('todos')">Todos</button>
+        <button class="tab-btn tab-btn-colorrectal" onclick="switchDbTab('colorrectal')">Colorrectal</button>
+        <button class="tab-btn tab-btn-proctologia" onclick="switchDbTab('proctologia')">Proctología</button>
+        <button class="tab-btn tab-btn-funcionales" onclick="switchDbTab('funcionales')">Funcionales</button>
+        <button class="tab-btn tab-btn-general" onclick="switchDbTab('general')">General</button>
+      </div>
+
+      <div class="card overflow-hidden">
+        <div class="overflow-x-auto">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>NHC</th><th>Fecha</th><th>Tipo</th>
+                <th>Diagnóstico</th><th>Intervención</th><th>Cirujano</th>
+                <th>ASA</th><th>Abordaje</th><th>Clavien</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="db-table-body"></tbody>
+          </table>
+        </div>
+        <div class="flex items-center justify-between p-4 border-t border-gray-100">
+          <span id="db-info" class="text-sm text-gray-500"></span>
+          <div class="flex gap-2">
+            <button id="db-prev-btn" onclick="dbChangePage(-1)" class="btn btn-ghost btn-sm text-sm">← Anterior</button>
+            <span id="db-page-info" class="text-sm text-gray-600 py-2 px-3"></span>
+            <button id="db-next-btn" onclick="dbChangePage(1)" class="btn btn-ghost text-sm">Siguiente →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════ DASHBOARD ══════════════════ -->
+    <div id="section-dashboard" class="section">
+      <div class="flex gap-1 mb-6 flex-wrap">
+        <button class="tab-btn tab-btn-todos active" onclick="switchDashTab('global')">Global</button>
+        <button class="tab-btn tab-btn-colorrectal" onclick="switchDashTab('colorrectal')">Colorrectal</button>
+        <button class="tab-btn tab-btn-proctologia" onclick="switchDashTab('proctologia')">Proctología</button>
+        <button class="tab-btn tab-btn-funcionales" onclick="switchDashTab('funcionales')">Funcionales</button>
+        <button class="tab-btn tab-btn-general" onclick="switchDashTab('general')">General</button>
+      </div>
+
+      <div id="dash-global">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="dash-kpis"></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-700 mb-4">Distribución por Tipo</h3>
+            <canvas id="chart-tipo" height="220"></canvas>
+          </div>
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-700 mb-4">Casos por Cirujano</h3>
+            <canvas id="chart-cirujano" height="220"></canvas>
+          </div>
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-700 mb-4">Evolución Mensual</h3>
+            <canvas id="chart-mensual" height="220"></canvas>
+          </div>
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-700 mb-4">Distribución Abordaje</h3>
+            <canvas id="chart-abordaje" height="220"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="dash-colorrectal" class="hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="dash-kpis-cr"></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-700 mb-4">Distribución Estadio TNM</h3>
+            <canvas id="chart-estadio" height="220"></canvas>
+          </div>
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-700 mb-4">Diagnósticos</h3>
+            <canvas id="chart-cr-diag" height="220"></canvas>
+          </div>
+          <div class="card p-5 md:col-span-2">
+            <h3 class="font-semibold text-gray-700 mb-4">Curva de Recidiva</h3>
+            <canvas id="chart-recidiva" height="150"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="dash-proctologia" class="hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="dash-kpis-pr"></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-700 mb-4">Por Diagnóstico</h3>
+            <canvas id="chart-pr-diag" height="220"></canvas>
+          </div>
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-700 mb-4">Por Intervención</h3>
+            <canvas id="chart-pr-interv" height="220"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="dash-funcionales" class="hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="dash-kpis-fu"></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-700 mb-4">Por Diagnóstico</h3>
+            <canvas id="chart-fu-diag" height="220"></canvas>
+          </div>
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-700 mb-4">Por Intervención</h3>
+            <canvas id="chart-fu-interv" height="220"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="dash-general" class="hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6" id="dash-kpis-ge"></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-700 mb-4">Por Diagnóstico</h3>
+            <canvas id="chart-ge-diag" height="220"></canvas>
+          </div>
+          <div class="card p-5">
+            <h3 class="font-semibold text-gray-700 mb-4">Por Intervención</h3>
+            <canvas id="chart-ge-interv" height="220"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════ EXPORTACIÓN ══════════════════ -->
+    <div id="section-export" class="section">
+      <div class="card p-8 max-w-xl">
+        <h2 class="text-lg font-bold text-gray-900 mb-6">Exportar Datos</h2>
+        <div class="space-y-4">
+          <div>
+            <label class="label">Tabla a exportar</label>
+            <select id="exp-tabla" class="input">
+              <option value="todas">Todas las tablas</option>
+              <option value="colorrectal">Cirugía Colorrectal</option>
+              <option value="proctologia">Proctología</option>
+              <option value="funcionales">Trastornos Funcionales</option>
+              <option value="general">Cirugía General</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="label">Fecha desde</label>
+              <input id="exp-desde" type="date" class="input"/>
+            </div>
+            <div>
+              <label class="label">Fecha hasta</label>
+              <input id="exp-hasta" type="date" class="input"/>
+            </div>
+          </div>
+          <div class="flex gap-3 pt-4">
+            <button onclick="doExport('csv')" class="btn btn-primary flex-1 justify-center py-3">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              Exportar CSV
+            </button>
+            <button onclick="doExport('xlsx')" class="btn btn-success flex-1 justify-center py-3">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+              Exportar Excel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════ ADMIN ══════════════════ -->
+    <div id="section-admin" class="section">
+      <div class="card p-6 max-w-3xl">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-lg font-bold text-gray-900">Gestión de Usuarios</h2>
+          <button onclick="openNewUserModal()" class="btn btn-primary">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Nuevo Usuario
+          </button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Usuario</th><th>Nombre</th><th>Admin</th><th>Estado</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="admin-users-table"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── DETAIL MODAL ─────────────────────────────────────────── -->
+<div id="detail-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('detail-modal')">
+  <div class="card w-full max-w-4xl mx-4 max-h-screen overflow-y-auto">
+    <div class="sticky top-0 bg-white border-b p-4 flex justify-between items-center">
+      <h2 class="font-bold text-gray-900">Detalle del Caso</h2>
+      <button onclick="closeModal('detail-modal')" class="btn btn-ghost">✕</button>
+    </div>
+    <div id="detail-content" class="p-6"></div>
+  </div>
+</div>
+
+<!-- ─── NEW USER MODAL ───────────────────────────────────────── -->
+<div id="user-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('user-modal')">
+  <div class="card w-full max-w-md mx-4 p-6">
+    <h2 class="font-bold text-gray-900 mb-4">Nuevo Usuario</h2>
+    <div class="space-y-4">
+      <div>
+        <label class="label">Usuario</label>
+        <input id="new-username" type="text" class="input"/>
+      </div>
+      <div>
+        <label class="label">Contraseña</label>
+        <input id="new-password" type="password" class="input"/>
+      </div>
+      <div>
+        <label class="label">Nombre completo</label>
+        <input id="new-nombre" type="text" class="input"/>
+      </div>
+      <div class="flex items-center gap-2">
+        <input id="new-admin" type="checkbox" class="w-4 h-4"/>
+        <label class="text-sm text-gray-700">Administrador</label>
+      </div>
+      <div class="flex gap-3">
+        <button onclick="closeModal('user-modal')" class="btn btn-ghost flex-1">Cancelar</button>
+        <button onclick="createUser()" class="btn btn-primary flex-1">Crear</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── TOAST ────────────────────────────────────────────────── -->
+<div id="toast" class="fixed bottom-6 right-6 px-5 py-3 rounded-xl text-white font-medium shadow-lg z-50 hidden transition-all text-sm"></div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
