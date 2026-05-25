@@ -1,3 +1,4 @@
+from collections import defaultdict
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -6,206 +7,196 @@ from auth import get_current_user, Usuario
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
+ALL_MODELS = [CirugiaColorrectal, Proctologia, TrastornosFuncionales, CirugiaGeneral]
+
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+def _count_val(db, Model, col, val):
+    return db.query(Model).filter(getattr(Model, col) == val).count()
+
+def _count_in(db, Model, col, vals):
+    return db.query(Model).filter(getattr(Model, col).in_(vals)).count()
+
+def _group_by(db, Model, col):
+    rows = db.query(getattr(Model, col), func.count()).group_by(getattr(Model, col)).all()
+    return {v: n for v, n in rows if v}
+
+def _avg(db, Model, col):
+    v = db.query(func.avg(getattr(Model, col))).scalar()
+    return round(float(v), 1) if v else 0.0
+
+def _monthly(db, Model):
+    """Returns {YYYY-MM: count} dict using Python-level grouping (no raw SQL)."""
+    rows = db.query(Model.fecha_intervencion).all()
+    m: dict = defaultdict(int)
+    for (d,) in rows:
+        if d:
+            key = d.strftime('%Y-%m')
+            m[key] += 1
+    return m
+
 
 def _base_stats(db, Model):
     total = db.query(Model).count()
-    avg_edad = db.query(func.avg(Model.edad)).scalar() or 0
-    avg_estancia = db.query(func.avg(Model.estancia)).scalar() or 0
-    lap = db.query(Model).filter(Model.abordaje.in_(["Laparoscopia", "Robótico"])).count()
-    conversion = db.query(Model).filter(Model.conversion == "Si").count()
-    clavien2 = db.query(Model).filter(Model.clavien_dindo.in_(["II", "IIIa", "IIIb", "IVa", "IVb", "V"])).count()
-    reint = db.query(Model).filter(Model.reintervencion == "Si").count()
-    mort = db.query(Model).filter(Model.mortalidad == "Si").count()
-    reingreso = db.query(Model).filter(Model.reingreso_30d == "Si").count()
+    lap = _count_in(db, Model, 'abordaje', ['Laparoscopia', 'Robótico'])
+    conv = _count_val(db, Model, 'conversion', 'Si')
+    clavien2 = _count_in(db, Model, 'clavien_dindo', ['II','IIIa','IIIb','IVa','IVb','V'])
+    reint = _count_val(db, Model, 'reintervencion', 'Si')
+    mort = _count_val(db, Model, 'mortalidad', 'Si')
+    reingreso = _count_val(db, Model, 'reingreso_30d', 'Si')
+
     return {
         "total": total,
-        "edad_media": round(float(avg_edad), 1),
-        "estancia_media": round(float(avg_estancia), 1),
+        "edad_media": _avg(db, Model, 'edad'),
+        "tq_medio": _avg(db, Model, 'tiempo_quirurgico'),
+        "estancia_media": _avg(db, Model, 'estancia'),
         "pct_laparoscopia": round(lap / total * 100, 1) if total else 0,
-        "pct_conversion": round(conversion / lap * 100, 1) if lap else 0,
+        "pct_conversion": round(conv / lap * 100, 1) if lap else 0,
         "pct_clavien_ge2": round(clavien2 / total * 100, 1) if total else 0,
         "pct_reintervencion": round(reint / total * 100, 1) if total else 0,
         "pct_mortalidad": round(mort / total * 100, 1) if total else 0,
         "pct_reingreso_30d": round(reingreso / total * 100, 1) if total else 0,
+        # Distributions
+        "por_sexo": _group_by(db, Model, 'sexo'),
+        "por_asa": _group_by(db, Model, 'asa'),
+        "por_abordaje": _group_by(db, Model, 'abordaje'),
+        "por_urgencia": _group_by(db, Model, 'urgencia'),
+        "por_clavien": _group_by(db, Model, 'clavien_dindo'),
+        "por_tipo_complicacion": _group_by(db, Model, 'tipo_complicacion'),
+        "por_cirujano": _group_by(db, Model, 'cirujano'),
+        "por_diagnostico": _group_by(db, Model, 'diagnostico'),
+        "por_intervencion": _group_by(db, Model, 'intervencion'),
     }
 
 
+# ── GLOBAL ───────────────────────────────────────────────────────────────────
 @router.get("/global")
 def global_stats(db: Session = Depends(get_db), _: Usuario = Depends(get_current_user)):
-    cr = db.query(CirugiaColorrectal).count()
-    pr = db.query(Proctologia).count()
-    fu = db.query(TrastornosFuncionales).count()
-    ge = db.query(CirugiaGeneral).count()
-    total = cr + pr + fu + ge
+    counts = {
+        'colorrectal': db.query(CirugiaColorrectal).count(),
+        'proctologia': db.query(Proctologia).count(),
+        'funcionales': db.query(TrastornosFuncionales).count(),
+        'general': db.query(CirugiaGeneral).count(),
+    }
+    total = sum(counts.values())
 
-    # Casos por mes (últimos 24 meses) — union approach
-    from sqlalchemy import text
-    rows = db.execute(text("""
-        SELECT strftime('%Y-%m', fecha_intervencion) as mes, COUNT(*) as n FROM cirugia_colorrectal GROUP BY mes
-        UNION ALL
-        SELECT strftime('%Y-%m', fecha_intervencion), COUNT(*) FROM proctologia GROUP BY mes
-        UNION ALL
-        SELECT strftime('%Y-%m', fecha_intervencion), COUNT(*) FROM trastornos_funcionales GROUP BY mes
-        UNION ALL
-        SELECT strftime('%Y-%m', fecha_intervencion), COUNT(*) FROM cirugia_general GROUP BY mes
-    """)).fetchall()
+    # Weighted averages across all tables
+    def _weighted_avg(col):
+        acc_sum, acc_n = 0.0, 0
+        for M in ALL_MODELS:
+            v = db.query(func.avg(getattr(M, col))).scalar()
+            n = db.query(M).count()
+            if v and n:
+                acc_sum += float(v) * n
+                acc_n += n
+        return round(acc_sum / acc_n, 1) if acc_n else 0.0
 
-    from collections import defaultdict
-    monthly: dict = defaultdict(int)
-    for mes, n in rows:
-        if mes:
-            monthly[mes] += n
-    monthly_sorted = sorted(monthly.items())[-24:]
+    # Aggregate counts across tables
+    def _sum_count(col, vals=None, val=None):
+        out = 0
+        for M in ALL_MODELS:
+            if vals is not None:
+                out += _count_in(db, M, col, vals)
+            else:
+                out += _count_val(db, M, col, val)
+        return out
 
-    # Abordaje distribution
-    abordaje_rows = db.execute(text("""
-        SELECT abordaje, COUNT(*) FROM cirugia_colorrectal GROUP BY abordaje
-        UNION ALL SELECT abordaje, COUNT(*) FROM proctologia GROUP BY abordaje
-        UNION ALL SELECT abordaje, COUNT(*) FROM trastornos_funcionales GROUP BY abordaje
-        UNION ALL SELECT abordaje, COUNT(*) FROM cirugia_general GROUP BY abordaje
-    """)).fetchall()
+    lap_total = _sum_count('abordaje', vals=['Laparoscopia', 'Robótico'])
+    conv_total = _sum_count('conversion', val='Si')
+    clavien2_total = _sum_count('clavien_dindo', vals=['II','IIIa','IIIb','IVa','IVb','V'])
+    reint_total = _sum_count('reintervencion', val='Si')
+    mort_total = _sum_count('mortalidad', val='Si')
+    reingreso_total = _sum_count('reingreso_30d', val='Si')
+
+    # Monthly — pure Python, no UNION SQL
+    monthly_combined: dict = defaultdict(int)
+    for M in ALL_MODELS:
+        for k, v in _monthly(db, M).items():
+            monthly_combined[k] += v
+    monthly_sorted = [{"mes": m, "n": n} for m, n in sorted(monthly_combined.items())[-24:]]
+
+    # Abordaje across all tables
     abordaje_map: dict = defaultdict(int)
-    for ab, n in abordaje_rows:
-        if ab:
-            abordaje_map[ab] += n
+    for M in ALL_MODELS:
+        for k, v in _group_by(db, M, 'abordaje').items():
+            abordaje_map[k] += v
 
-    # Casos por cirujano
-    cir_rows = db.execute(text("""
-        SELECT cirujano, COUNT(*) FROM cirugia_colorrectal GROUP BY cirujano
-        UNION ALL SELECT cirujano, COUNT(*) FROM proctologia GROUP BY cirujano
-        UNION ALL SELECT cirujano, COUNT(*) FROM trastornos_funcionales GROUP BY cirujano
-        UNION ALL SELECT cirujano, COUNT(*) FROM cirugia_general GROUP BY cirujano
-    """)).fetchall()
+    # Cirujano across all tables
     cir_map: dict = defaultdict(int)
-    for cir, n in cir_rows:
-        if cir:
-            cir_map[cir] += n
+    for M in ALL_MODELS:
+        for k, v in _group_by(db, M, 'cirujano').items():
+            cir_map[k] += v
 
-    stats = {}
-    if total > 0:
-        all_ages = []
-        all_estancias = []
-        for Model in [CirugiaColorrectal, Proctologia, TrastornosFuncionales, CirugiaGeneral]:
-            a = db.query(func.avg(Model.edad)).scalar()
-            e = db.query(func.avg(Model.estancia)).scalar()
-            c = db.query(Model).count()
-            if a and c:
-                all_ages.append((float(a), c))
-            if e and c:
-                all_estancias.append((float(e), c))
-        edad_media = sum(a * c for a, c in all_ages) / sum(c for _, c in all_ages) if all_ages else 0
-        estancia_media = sum(e * c for e, c in all_estancias) / sum(c for _, c in all_estancias) if all_estancias else 0
-
-        lap_total = sum(
-            db.query(M).filter(M.abordaje.in_(["Laparoscopia", "Robótico"])).count()
-            for M in [CirugiaColorrectal, Proctologia, TrastornosFuncionales, CirugiaGeneral]
-        )
-        conv_total = sum(
-            db.query(M).filter(M.conversion == "Si").count()
-            for M in [CirugiaColorrectal, Proctologia, TrastornosFuncionales, CirugiaGeneral]
-        )
-        clavien2_total = sum(
-            db.query(M).filter(M.clavien_dindo.in_(["II", "IIIa", "IIIb", "IVa", "IVb", "V"])).count()
-            for M in [CirugiaColorrectal, Proctologia, TrastornosFuncionales, CirugiaGeneral]
-        )
-        reint_total = sum(db.query(M).filter(M.reintervencion == "Si").count() for M in [CirugiaColorrectal, Proctologia, TrastornosFuncionales, CirugiaGeneral])
-        mort_total = sum(db.query(M).filter(M.mortalidad == "Si").count() for M in [CirugiaColorrectal, Proctologia, TrastornosFuncionales, CirugiaGeneral])
-        reingreso_total = sum(db.query(M).filter(M.reingreso_30d == "Si").count() for M in [CirugiaColorrectal, Proctologia, TrastornosFuncionales, CirugiaGeneral])
-
-        stats = {
-            "total": total,
-            "colorrectal": cr,
-            "proctologia": pr,
-            "funcionales": fu,
-            "general": ge,
-            "edad_media": round(edad_media, 1),
-            "estancia_media": round(estancia_media, 1),
-            "pct_laparoscopia": round(lap_total / total * 100, 1),
-            "pct_conversion": round(conv_total / lap_total * 100, 1) if lap_total else 0,
-            "pct_clavien_ge2": round(clavien2_total / total * 100, 1),
-            "pct_reintervencion": round(reint_total / total * 100, 1),
-            "pct_mortalidad": round(mort_total / total * 100, 1),
-            "pct_reingreso_30d": round(reingreso_total / total * 100, 1),
-            "monthly": [{"mes": m, "n": n} for m, n in monthly_sorted],
-            "abordaje": dict(abordaje_map),
-            "por_cirujano": dict(sorted(cir_map.items(), key=lambda x: -x[1])),
-        }
-    else:
-        stats = {
-            "total": 0, "colorrectal": 0, "proctologia": 0, "funcionales": 0, "general": 0,
-            "edad_media": 0, "estancia_media": 0, "pct_laparoscopia": 0, "pct_conversion": 0,
-            "pct_clavien_ge2": 0, "pct_reintervencion": 0, "pct_mortalidad": 0, "pct_reingreso_30d": 0,
-            "monthly": [], "abordaje": {}, "por_cirujano": {},
-        }
-    return stats
+    return {
+        "total": total,
+        **counts,
+        "edad_media": _weighted_avg('edad'),
+        "estancia_media": _weighted_avg('estancia'),
+        "pct_laparoscopia": round(lap_total / total * 100, 1) if total else 0,
+        "pct_conversion": round(conv_total / lap_total * 100, 1) if lap_total else 0,
+        "pct_clavien_ge2": round(clavien2_total / total * 100, 1) if total else 0,
+        "pct_reintervencion": round(reint_total / total * 100, 1) if total else 0,
+        "pct_mortalidad": round(mort_total / total * 100, 1) if total else 0,
+        "pct_reingreso_30d": round(reingreso_total / total * 100, 1) if total else 0,
+        "monthly": monthly_sorted,
+        "abordaje": dict(abordaje_map),
+        "por_cirujano": dict(sorted(cir_map.items(), key=lambda x: -x[1])),
+    }
 
 
+# ── COLORRECTAL ──────────────────────────────────────────────────────────────
 @router.get("/colorrectal")
 def colorrectal_stats(db: Session = Depends(get_db), _: Usuario = Depends(get_current_user)):
     stats = _base_stats(db, CirugiaColorrectal)
     total = stats["total"]
 
-    estadios = {}
-    for est in ["0", "I", "IIA", "IIB", "IIC", "IIIA", "IIIB", "IIIC", "IVA", "IVB", "IVC"]:
-        estadios[est] = db.query(CirugiaColorrectal).filter(CirugiaColorrectal.estadio_tnm == est).count()
+    M = CirugiaColorrectal
+    estoma = _count_val(db, M, 'estoma_proteccion', 'Si')
+    dehiscencia = _count_val(db, M, 'dehiscencia', 'Si')
+    neo = _count_val(db, M, 'neoadyuvancia', 'Si')
+    pcr = _count_val(db, M, 'pcr', 'Si')
+    margenes = _count_val(db, M, 'margenes_libres', 'Si')
+    ady = _count_val(db, M, 'adyuvancia', 'Si')
+    ganglios_media = _avg(db, M, 'ganglios_analizados')
 
-    neo = db.query(CirugiaColorrectal).filter(CirugiaColorrectal.neoadyuvancia == "Si").count()
-    pcr = db.query(CirugiaColorrectal).filter(CirugiaColorrectal.pcr == "Si").count()
-    margenes = db.query(CirugiaColorrectal).filter(CirugiaColorrectal.margenes_libres == "Si").count()
-    dehiscencia = db.query(CirugiaColorrectal).filter(CirugiaColorrectal.dehiscencia == "Si").count()
+    estadios = {}
+    for est in ["0","I","IIA","IIB","IIC","IIIA","IIIB","IIIC","IVA","IVB","IVC"]:
+        estadios[est] = db.query(M).filter(M.estadio_tnm == est).count()
 
     intervalos = {}
-    for m in [3, 6, 12, 18, 24, 36, 48, 60]:
-        col = getattr(CirugiaColorrectal, f"recidiva_{m}m")
-        intervalos[f"{m}m"] = db.query(CirugiaColorrectal).filter(col == "Si").count()
-
-    diag_rows = db.query(CirugiaColorrectal.diagnostico, func.count()).group_by(CirugiaColorrectal.diagnostico).all()
-    interv_rows = db.query(CirugiaColorrectal.intervencion, func.count()).group_by(CirugiaColorrectal.intervencion).all()
+    for mo in [3, 6, 12, 18, 24, 36, 48, 60]:
+        col = getattr(M, f"recidiva_{mo}m")
+        intervalos[f"{mo}m"] = db.query(M).filter(col == "Si").count()
 
     stats.update({
-        "estadios": estadios,
+        "pct_estoma_proteccion": round(estoma / total * 100, 1) if total else 0,
+        "pct_dehiscencia": round(dehiscencia / total * 100, 1) if total else 0,
         "pct_neoadyuvancia": round(neo / total * 100, 1) if total else 0,
         "pct_pcr": round(pcr / neo * 100, 1) if neo else 0,
         "pct_margenes_libres": round(margenes / total * 100, 1) if total else 0,
-        "pct_dehiscencia": round(dehiscencia / total * 100, 1) if total else 0,
+        "pct_adyuvancia": round(ady / total * 100, 1) if total else 0,
+        "ganglios_media": ganglios_media,
+        "estadios": estadios,
         "recidiva_intervalos": intervalos,
-        "por_diagnostico": {d: n for d, n in diag_rows if d},
-        "por_intervencion": {i: n for i, n in interv_rows if i},
+        "por_neoadyuvancia": _group_by(db, M, 'neoadyuvancia'),
+        "por_adyuvancia": _group_by(db, M, 'adyuvancia'),
     })
     return stats
 
 
+# ── PROCTOLOGÍA ──────────────────────────────────────────────────────────────
 @router.get("/proctologia")
 def proctologia_stats(db: Session = Depends(get_db), _: Usuario = Depends(get_current_user)):
-    stats = _base_stats(db, Proctologia)
-    diag_rows = db.query(Proctologia.diagnostico, func.count()).group_by(Proctologia.diagnostico).all()
-    interv_rows = db.query(Proctologia.intervencion, func.count()).group_by(Proctologia.intervencion).all()
-    stats.update({
-        "por_diagnostico": {d: n for d, n in diag_rows if d},
-        "por_intervencion": {i: n for i, n in interv_rows if i},
-    })
-    return stats
+    return _base_stats(db, Proctologia)
 
 
+# ── FUNCIONALES ──────────────────────────────────────────────────────────────
 @router.get("/funcionales")
 def funcionales_stats(db: Session = Depends(get_db), _: Usuario = Depends(get_current_user)):
-    stats = _base_stats(db, TrastornosFuncionales)
-    diag_rows = db.query(TrastornosFuncionales.diagnostico, func.count()).group_by(TrastornosFuncionales.diagnostico).all()
-    interv_rows = db.query(TrastornosFuncionales.intervencion, func.count()).group_by(TrastornosFuncionales.intervencion).all()
-    stats.update({
-        "por_diagnostico": {d: n for d, n in diag_rows if d},
-        "por_intervencion": {i: n for i, n in interv_rows if i},
-    })
-    return stats
+    return _base_stats(db, TrastornosFuncionales)
 
 
+# ── GENERAL ──────────────────────────────────────────────────────────────────
 @router.get("/general")
 def general_stats(db: Session = Depends(get_db), _: Usuario = Depends(get_current_user)):
-    stats = _base_stats(db, CirugiaGeneral)
-    diag_rows = db.query(CirugiaGeneral.diagnostico, func.count()).group_by(CirugiaGeneral.diagnostico).all()
-    interv_rows = db.query(CirugiaGeneral.intervencion, func.count()).group_by(CirugiaGeneral.intervencion).all()
-    stats.update({
-        "por_diagnostico": {d: n for d, n in diag_rows if d},
-        "por_intervencion": {i: n for i, n in interv_rows if i},
-    })
-    return stats
+    return _base_stats(db, CirugiaGeneral)

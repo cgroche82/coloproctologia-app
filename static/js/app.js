@@ -238,6 +238,14 @@ function onTipoCirugia() {
   });
   document.getElementById('f-intervencion').innerHTML = '<option value="">— Seleccione diagnóstico —</option>';
   document.getElementById('wrap-estoma').classList.toggle('hidden', tipo !== 'colorrectal');
+  // Paso 4: etiqueta dinámica según tipo
+  const isColorrectal = tipo === 'colorrectal';
+  const lbl = document.getElementById('step4-label');
+  const ttl = document.getElementById('step4-title');
+  if (lbl) lbl.textContent = isColorrectal ? 'Oncológico' : 'Seguimiento';
+  if (ttl) ttl.textContent = isColorrectal
+    ? 'Paso 4 — Oncológico · Seguimiento · Observaciones'
+    : 'Paso 4 — Seguimiento · Observaciones';
   loadNextId();
 }
 
@@ -286,9 +294,17 @@ function onAdyuvancia() {
 function updateOncologicoVisibility() {
   const tipo = document.getElementById('f-tipo-cirugia').value;
   const diag = document.getElementById('f-diagnostico').value;
-  const show = tipo === 'colorrectal' && diag.startsWith('Neoplasia');
-  document.getElementById('wrap-oncologico').classList.toggle('hidden', !show);
-  document.getElementById('wrap-dehiscencia').classList.toggle('hidden', tipo !== 'colorrectal');
+  const isColorrectal = tipo === 'colorrectal';
+  const showOnco = isColorrectal && diag.startsWith('Neoplasia');
+  document.getElementById('wrap-oncologico').classList.toggle('hidden', !showOnco);
+  document.getElementById('wrap-dehiscencia').classList.toggle('hidden', !isColorrectal);
+  // Sync step 4 labels when called from populateForm
+  const lbl = document.getElementById('step4-label');
+  const ttl = document.getElementById('step4-title');
+  if (lbl) lbl.textContent = isColorrectal ? 'Oncológico' : 'Seguimiento';
+  if (ttl) ttl.textContent = isColorrectal
+    ? 'Paso 4 — Oncológico · Seguimiento · Observaciones'
+    : 'Paso 4 — Seguimiento · Observaciones';
 }
 
 // ── Calculated fields ────────────────────────────────────────
@@ -749,107 +765,133 @@ function mkChart(id, type, labels, datasets, opts = {}) {
 }
 
 const PALETTE = ['#1565C0','#2E7D32','#6A1B9A','#E65100','#C62828','#00838F','#AD1457','#558B2F','#4527A0','#0277BD'];
+const DONUT_OPTS = { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } } };
+const BAR_NOLABEL = { responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { font: { size: 11 } } } } };
+const BAR_Y_NOLABEL = { responsive: true, indexAxis: 'y', plugins: { legend: { display: false } }, scales: { y: { ticks: { font: { size: 11 } } } } };
+
+function kpiCard(label, value, color, sub = '') {
+  return `<div class="stat-card" style="border-color:${color}">
+    <div class="text-xl font-bold leading-tight" style="color:${color}">${value}</div>
+    <div class="text-xs font-semibold text-gray-700 mt-1">${label}</div>
+    ${sub ? `<div class="text-xs text-gray-400 mt-1">${sub}</div>` : ''}
+  </div>`;
+}
+
+function mkDonut(id, obj, colors) {
+  const entries = Object.entries(obj || {}).filter(([,v]) => v > 0);
+  if (!entries.length) return;
+  mkChart(id, 'doughnut', entries.map(([k]) => k), [{
+    data: entries.map(([,v]) => v),
+    backgroundColor: colors || PALETTE,
+  }], DONUT_OPTS);
+}
+
+function mkBarH(id, obj, color) {
+  const entries = Object.entries(obj || {}).filter(([,v]) => v > 0).sort(([,a],[,b]) => b - a);
+  if (!entries.length) return;
+  mkChart(id, 'bar', entries.map(([k]) => k.replace(/^(Neoplasia de |DR[A]?\. )/, '')), [{
+    label: 'Casos', data: entries.map(([,v]) => v), backgroundColor: color,
+  }], BAR_Y_NOLABEL);
+}
+
+function mkBarV(id, labels, data, color) {
+  mkChart(id, 'bar', labels, [{ label: 'Casos', data, backgroundColor: color }], BAR_NOLABEL);
+}
+
+function mkClavienBar(id, obj, color) {
+  const keys = ['0','I','II','IIIa','IIIb','IVa','IVb','V'];
+  mkBarV(id, keys, keys.map(k => obj[k] || 0), color);
+}
 
 async function loadDashboard(tab) {
   try {
+    // ── GLOBAL ──────────────────────────────────────────────
     if (tab === 'global') {
       const d = await api('GET', '/api/stats/global');
       if (!d) return;
-      const kpiEl = document.getElementById('dash-kpis');
-      kpiEl.innerHTML = `
-        ${kpiCard('Total Casos', d.total, '#0D2B4E', `CR: ${d.colorrectal} · Pr: ${d.proctologia} · Fu: ${d.funcionales} · Ge: ${d.general}`)}
-        ${kpiCard('Edad Media', d.edad_media + ' años', '#1565C0', `Estancia: ${d.estancia_media} días`)}
-        ${kpiCard('% Laparoscopia', d.pct_laparoscopia + '%', '#2E7D32', `Conversión: ${d.pct_conversion}%`)}
+      document.getElementById('dash-kpis').innerHTML = `
+        ${kpiCard('Total Casos', d.total, '#0D2B4E', `CR:${d.colorrectal} Pr:${d.proctologia} Fu:${d.funcionales} Ge:${d.general}`)}
+        ${kpiCard('Edad Media', d.edad_media + ' a', '#1565C0', `Estancia: ${d.estancia_media} d`)}
+        ${kpiCard('Laparoscopia', d.pct_laparoscopia + '%', '#2E7D32', `Conversión: ${d.pct_conversion}%`)}
         ${kpiCard('Clavien ≥ II', d.pct_clavien_ge2 + '%', '#6A1B9A', `Reintervención: ${d.pct_reintervencion}%`)}
-        ${kpiCard('Mortalidad 30d', d.pct_mortalidad + '%', '#C62828', `Reingreso 30d: ${d.pct_reingreso_30d}%`)}
+        ${kpiCard('Mortalidad 30d', d.pct_mortalidad + '%', '#C62828', `Reingreso: ${d.pct_reingreso_30d}%`)}
       `;
-
-      mkChart('chart-tipo', 'doughnut',
-        ['Colorrectal','Proctología','Funcionales','General'],
-        [{ data: [d.colorrectal, d.proctologia, d.funcionales, d.general], backgroundColor: ['#1565C0','#2E7D32','#6A1B9A','#E65100'] }]
+      mkDonut('chart-tipo',
+        { Colorrectal: d.colorrectal, Proctología: d.proctologia, Funcionales: d.funcionales, General: d.general },
+        ['#1565C0','#2E7D32','#6A1B9A','#E65100']
       );
-
-      const cirs = Object.entries(d.por_cirujano || {});
-      mkChart('chart-cirujano', 'bar',
-        cirs.map(([k]) => k.replace(/^DR[A]?\. /, '')),
-        [{ label: 'Casos', data: cirs.map(([,v]) => v), backgroundColor: '#1565C0' }],
-        { indexAxis: 'y', plugins: { legend: { display: false } } }
-      );
-
+      mkDonut('chart-abordaje', d.abordaje || {});
+      mkBarH('chart-cirujano', d.por_cirujano || {}, '#1565C0');
       const monthly = d.monthly || [];
       mkChart('chart-mensual', 'line',
         monthly.map(m => m.mes),
-        [{ label: 'Casos', data: monthly.map(m => m.n), borderColor: '#1565C0', backgroundColor: 'rgba(21,101,192,.1)', fill: true, tension: 0.4 }],
-        { plugins: { legend: { display: false } } }
+        [{ label: 'Casos', data: monthly.map(m => m.n), borderColor: '#1565C0', backgroundColor: 'rgba(21,101,192,.12)', fill: true, tension: 0.4 }],
+        { responsive: true, plugins: { legend: { display: false } } }
       );
 
-      const ab = Object.entries(d.abordaje || {});
-      mkChart('chart-abordaje', 'doughnut',
-        ab.map(([k]) => k),
-        [{ data: ab.map(([,v]) => v), backgroundColor: PALETTE }]
-      );
-
+    // ── COLORRECTAL ─────────────────────────────────────────
     } else if (tab === 'colorrectal') {
       const d = await api('GET', '/api/stats/colorrectal');
       if (!d) return;
       document.getElementById('dash-kpis-cr').innerHTML = `
-        ${kpiCard('Total', d.total, '#1565C0', `Edad: ${d.edad_media} a | Estancia: ${d.estancia_media} d`)}
-        ${kpiCard('Neoadyuvancia', d.pct_neoadyuvancia + '%', '#1565C0', `pCR: ${d.pct_pcr}%`)}
-        ${kpiCard('Márgenes libres', d.pct_margenes_libres + '%', '#2E7D32', `Dehiscencia: ${d.pct_dehiscencia}%`)}
-        ${kpiCard('Clavien ≥ II', d.pct_clavien_ge2 + '%', '#6A1B9A', `Mortalidad: ${d.pct_mortalidad}%`)}
+        ${kpiCard('Total', d.total, '#1565C0', `Edad: ${d.edad_media} a`)}
+        ${kpiCard('TQ Medio', d.tq_medio + ' min', '#1565C0', `Estancia: ${d.estancia_media} d`)}
+        ${kpiCard('Conversión', d.pct_conversion + '%', '#1565C0', `Estoma prot.: ${d.pct_estoma_proteccion}%`)}
+        ${kpiCard('Dehiscencia', d.pct_dehiscencia + '%', '#C62828', `Reintervención: ${d.pct_reintervencion}%`)}
+        ${kpiCard('Neoadyuvancia', d.pct_neoadyuvancia + '%', '#2E7D32', `pCR: ${d.pct_pcr}%`)}
+        ${kpiCard('Adyuvancia', d.pct_adyuvancia + '%', '#2E7D32', `Márgenes libres: ${d.pct_margenes_libres}%`)}
+        ${kpiCard('Mortalidad 30d', d.pct_mortalidad + '%', '#C62828', `Reingreso: ${d.pct_reingreso_30d}%`)}
+        ${kpiCard('Ganglios med.', d.ganglios_media, '#6A1B9A', `Clavien ≥ II: ${d.pct_clavien_ge2}%`)}
       `;
-      const estadios = d.estadios || {};
+      // Donuts
+      mkDonut('cr-chart-sexo', d.por_sexo, ['#1565C0','#E91E63']);
+      mkDonut('cr-chart-asa', d.por_asa, ['#43A047','#FDD835','#FB8C00','#E53935','#7B1FA2']);
+      mkDonut('cr-chart-abordaje', d.por_abordaje);
+      mkDonut('cr-chart-urgencia', d.por_urgencia, ['#2E7D32','#C62828']);
+      mkDonut('cr-chart-neo', d.por_neoadyuvancia, ['#C62828','#E0E0E0']);
+      mkDonut('cr-chart-ady', d.por_adyuvancia, ['#1565C0','#E0E0E0']);
+      // Barras
       const estKeys = ['0','I','IIA','IIB','IIC','IIIA','IIIB','IIIC','IVA','IVB','IVC'];
-      mkChart('chart-estadio', 'bar', estKeys,
-        [{ label: 'Casos', data: estKeys.map(k => estadios[k] || 0), backgroundColor: '#1565C0' }],
-        { plugins: { legend: { display: false } } }
-      );
-      const diags = Object.entries(d.por_diagnostico || {});
-      mkChart('chart-cr-diag', 'bar', diags.map(([k]) => k.replace('Neoplasia de ','')),
-        [{ label: 'Casos', data: diags.map(([,v]) => v), backgroundColor: PALETTE }],
-        { indexAxis: 'y', plugins: { legend: { display: false } } }
-      );
+      mkBarV('cr-chart-estadio', estKeys, estKeys.map(k => (d.estadios||{})[k]||0), '#1565C0');
+      mkClavienBar('cr-chart-clavien', d.por_clavien || {}, '#6A1B9A');
+      mkBarH('cr-chart-cirujano', d.por_cirujano || {}, '#1565C0');
+      mkBarH('cr-chart-diag', d.por_diagnostico || {}, '#1565C0');
+      mkBarH('cr-chart-interv', d.por_intervencion || {}, '#42A5F5');
+      // Recidiva
       const ri = d.recidiva_intervalos || {};
-      mkChart('chart-recidiva', 'line',
+      mkChart('cr-chart-recidiva', 'line',
         INTERVALOS.map(m => `${m}m`),
-        [{ label: 'Recidiva acumulada', data: INTERVALOS.map(m => ri[`${m}m`] || 0), borderColor: '#C62828', backgroundColor: 'rgba(198,40,40,.1)', fill: true, tension: 0.4 }],
-        { plugins: { legend: { display: false } } }
+        [{ label: 'Casos con recidiva', data: INTERVALOS.map(m => ri[`${m}m`]||0), borderColor: '#C62828', backgroundColor: 'rgba(198,40,40,.1)', fill: true, tension: 0.4, pointRadius: 5 }],
+        { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
       );
 
+    // ── PROCTOLOGÍA / FUNCIONALES / GENERAL ─────────────────
     } else {
-      const endpointMap = { proctologia: 'proctologia', funcionales: 'funcionales', general: 'general' };
-      const kpiIdMap = { proctologia: 'dash-kpis-pr', funcionales: 'dash-kpis-fu', general: 'dash-kpis-ge' };
       const colorMap = { proctologia: '#2E7D32', funcionales: '#6A1B9A', general: '#E65100' };
-      const d = await api('GET', `/api/stats/${endpointMap[tab]}`);
+      const kpiIdMap = { proctologia: 'dash-kpis-pr', funcionales: 'dash-kpis-fu', general: 'dash-kpis-ge' };
+      const pfx = tab.substring(0,2);  // pr, fu, ge
+      const color = colorMap[tab];
+      const d = await api('GET', `/api/stats/${tab}`);
       if (!d) return;
       document.getElementById(kpiIdMap[tab]).innerHTML = `
-        ${kpiCard('Total', d.total, colorMap[tab], `Edad: ${d.edad_media} a | Estancia: ${d.estancia_media} d`)}
-        ${kpiCard('Laparoscopia', d.pct_laparoscopia + '%', colorMap[tab], `Conversión: ${d.pct_conversion}%`)}
-        ${kpiCard('Clavien ≥ II', d.pct_clavien_ge2 + '%', colorMap[tab], `Reintervención: ${d.pct_reintervencion}%`)}
-        ${kpiCard('Mortalidad', d.pct_mortalidad + '%', '#C62828', `Reingreso 30d: ${d.pct_reingreso_30d}%`)}
+        ${kpiCard('Total', d.total, color, `Edad: ${d.edad_media} a`)}
+        ${kpiCard('Estancia Media', d.estancia_media + ' d', color, `TQ: ${d.tq_medio} min`)}
+        ${kpiCard('Reintervención', d.pct_reintervencion + '%', color, `Clavien ≥ II: ${d.pct_clavien_ge2}%`)}
+        ${kpiCard('Mortalidad 30d', d.pct_mortalidad + '%', '#C62828', `Reingreso: ${d.pct_reingreso_30d}%`)}
+        ${kpiCard('Laparoscopia', d.pct_laparoscopia + '%', color, `Conversión: ${d.pct_conversion}%`)}
       `;
-      const diagId = `chart-${tab.substring(0,2)}-diag`;
-      const intervId = `chart-${tab.substring(0,2)}-interv`;
-      const diags = Object.entries(d.por_diagnostico || {});
-      mkChart(diagId, 'bar', diags.map(([k]) => k),
-        [{ label: 'Casos', data: diags.map(([,v]) => v), backgroundColor: colorMap[tab] }],
-        { indexAxis: 'y', plugins: { legend: { display: false } } }
-      );
-      const intervs = Object.entries(d.por_intervencion || {});
-      mkChart(intervId, 'bar', intervs.map(([k]) => k),
-        [{ label: 'Casos', data: intervs.map(([,v]) => v), backgroundColor: colorMap[tab] }],
-        { indexAxis: 'y', plugins: { legend: { display: false } } }
-      );
+      // Donuts
+      mkDonut(`${pfx}-chart-sexo`, d.por_sexo, ['#1565C0','#E91E63']);
+      mkDonut(`${pfx}-chart-asa`, d.por_asa, ['#43A047','#FDD835','#FB8C00','#E53935','#7B1FA2']);
+      mkDonut(`${pfx}-chart-urgencia`, d.por_urgencia, ['#2E7D32','#C62828']);
+      // Barras
+      mkBarH(`${pfx}-chart-cirujano`, d.por_cirujano || {}, color);
+      mkBarH(`${pfx}-chart-diag`, d.por_diagnostico || {}, color);
+      mkBarH(`${pfx}-chart-interv`, d.por_intervencion || {}, color);
+      mkClavienBar(`${pfx}-chart-clavien`, d.por_clavien || {}, '#6A1B9A');
+      mkBarH(`${pfx}-chart-complic`, d.por_tipo_complicacion || {}, '#FB8C00');
     }
   } catch (e) { showToast(e.message, 'error'); }
-}
-
-function kpiCard(label, value, color, sub = '') {
-  return `<div class="stat-card" style="border-color:${color}">
-    <div class="text-2xl font-bold" style="color:${color}">${value}</div>
-    <div class="text-sm font-semibold text-gray-700 mt-1">${label}</div>
-    ${sub ? `<div class="text-xs text-gray-400 mt-1">${sub}</div>` : ''}
-  </div>`;
 }
 
 // ── Export ───────────────────────────────────────────────────
