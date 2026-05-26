@@ -122,3 +122,11 @@ class Usuario(Base):
 
 def create_tables():
     Base.metadata.create_all(bind=engine)
+
+
+def recreate_engine():
+    """Re-initialize engine and session factory after DB file replacement (restore)."""
+    global engine, SessionLocal
+    engine.dispose()
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

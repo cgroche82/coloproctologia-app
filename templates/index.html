@@ -848,6 +848,74 @@
           </div>
         </div>
       </div>
+
+      <!-- ── Seguridad de datos (admin only) ── -->
+      <div id="security-panel" class="hidden card max-w-xl mt-6" style="border:2px solid #ef4444;background:#fff5f5;">
+        <div class="p-5 border-b border-red-200 flex items-center gap-3">
+          <svg class="w-6 h-6 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+          </svg>
+          <div>
+            <h3 class="font-bold text-red-700">Seguridad de Datos — Solo Administrador</h3>
+            <p class="text-xs text-red-500 mt-0.5">Estas operaciones afectan a toda la base de datos. Úselas con precaución.</p>
+          </div>
+        </div>
+        <div class="p-5 space-y-4">
+
+          <!-- BACKUP -->
+          <div class="flex items-start gap-4 p-4 rounded-lg bg-red-50 border border-red-200">
+            <svg class="w-8 h-8 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            <div class="flex-1">
+              <p class="font-semibold text-gray-800 text-sm">Descargar Backup completo</p>
+              <p class="text-xs text-gray-500 mt-0.5 mb-3">Descarga el archivo <code>.db</code> completo de SQLite con todos los registros.</p>
+              <button onclick="doBackup()" class="btn btn-danger text-sm px-4 py-2">
+                Descargar Backup (.db)
+              </button>
+            </div>
+          </div>
+
+          <!-- RESTORE -->
+          <div class="flex items-start gap-4 p-4 rounded-lg bg-red-50 border border-red-200">
+            <svg class="w-8 h-8 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l4-4m0 0l4 4m-4-4v12"/>
+            </svg>
+            <div class="flex-1">
+              <p class="font-semibold text-gray-800 text-sm">Restaurar Backup</p>
+              <p class="text-xs text-gray-500 mt-0.5 mb-3"><strong class="text-red-600">¡Atención!</strong> Reemplaza toda la base de datos con el archivo seleccionado. Esta acción no se puede deshacer.</p>
+              <div class="flex items-center gap-2">
+                <input id="restore-file" type="file" accept=".db" class="text-xs text-gray-600 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-red-100 file:text-red-700 hover:file:bg-red-200"/>
+                <button onclick="doRestore()" class="btn btn-danger text-sm px-4 py-2">
+                  Restaurar
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- IMPORT CSV -->
+          <div class="flex items-start gap-4 p-4 rounded-lg bg-red-50 border border-red-200">
+            <svg class="w-8 h-8 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            <div class="flex-1">
+              <p class="font-semibold text-gray-800 text-sm">Importar CSV</p>
+              <p class="text-xs text-gray-500 mt-0.5 mb-3">Añade registros desde un CSV exportado previamente sin borrar los existentes. La columna <code>tipo_cirugia</code> determina la tabla destino.</p>
+              <div class="flex items-center gap-2">
+                <input id="import-csv-file" type="file" accept=".csv" class="text-xs text-gray-600 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-red-100 file:text-red-700 hover:file:bg-red-200"/>
+                <button onclick="doImportCsv()" class="btn btn-danger text-sm px-4 py-2">
+                  Importar
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
     </div>
 
     <!-- ══════════════════ ADMIN ══════════════════ -->

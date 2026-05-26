@@ -1,12 +1,18 @@
 import csv
 import io
-from datetime import date
+import os
+import shutil
+import tempfile
+from datetime import date, datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
-from database import get_db, CirugiaColorrectal, Proctologia, TrastornosFuncionales, CirugiaGeneral
-from auth import get_current_user, Usuario
+from database import (
+    DB_PATH, get_db, recreate_engine,
+    CirugiaColorrectal, Proctologia, TrastornosFuncionales, CirugiaGeneral,
+)
+from auth import get_current_user, get_admin_user, Usuario
 
 router = APIRouter(prefix="/api/export", tags=["export"])
 
@@ -202,3 +208,158 @@ def export_xlsx(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename=coloproctologia_{tabla}.xlsx"},
     )
+
+
+# ── BACKUP ───────────────────────────────────────────────────────────────────
+@router.get("/backup")
+def download_backup(_: Usuario = Depends(get_admin_user)):
+    """Stream the raw SQLite database file. Admin only."""
+    if not os.path.exists(DB_PATH):
+        raise HTTPException(status_code=404, detail="Base de datos no encontrada")
+    filename = f"backup_coloproctologia_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.db"
+    return FileResponse(
+        path=DB_PATH,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+# ── RESTORE ──────────────────────────────────────────────────────────────────
+SQLITE_MAGIC = b"SQLite format 3\x00"
+
+@router.post("/restore")
+async def restore_backup(
+    file: UploadFile = File(...),
+    _: Usuario = Depends(get_admin_user),
+):
+    """Replace the current database with an uploaded .db backup. Admin only."""
+    content = await file.read()
+    if not content.startswith(SQLITE_MAGIC):
+        raise HTTPException(
+            status_code=400,
+            detail="El archivo no es una base de datos SQLite válida",
+        )
+
+    # Write to a temp file first, then atomically replace
+    db_dir = os.path.dirname(DB_PATH)
+    os.makedirs(db_dir, exist_ok=True)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=db_dir, suffix=".db.tmp")
+    try:
+        with os.fdopen(tmp_fd, "wb") as f:
+            f.write(content)
+        # Close all SQLAlchemy connections before replacing the file
+        recreate_engine()
+        shutil.move(tmp_path, DB_PATH)
+        # Re-connect to the restored file
+        recreate_engine()
+    except Exception as e:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise HTTPException(status_code=500, detail=f"Error al restaurar: {e}")
+
+    return {"ok": True, "message": "Base de datos restaurada correctamente"}
+
+
+# ── IMPORT CSV ───────────────────────────────────────────────────────────────
+# Mapping from column name → model class (for auto-detection when tipo_cirugia missing)
+_COLORRECTAL_ONLY = {"t_tnm", "n_tnm", "m_tnm", "estadio_tnm", "neoadyuvancia", "estoma_proteccion"}
+
+MODEL_MAP = {
+    "colorrectal":  CirugiaColorrectal,
+    "proctologia":  Proctologia,
+    "funcionales":  TrastornosFuncionales,
+    "general":      CirugiaGeneral,
+}
+
+# Fields to skip when inserting (auto-set by DB)
+_SKIP = {"id", "created_at"}
+
+DATE_COLS = {
+    "fecha_intervencion", "fecha_nacimiento", "fecha_alta", "fecha_exitus",
+}
+
+
+def _parse_date(val: str):
+    if not val or val.strip() == "":
+        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(val.strip(), fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+def _detect_tipo(fieldnames: list[str]) -> str:
+    """Guess surgery type from CSV column names."""
+    if _COLORRECTAL_ONLY.intersection(fieldnames):
+        return "colorrectal"
+    return "general"  # safe fallback
+
+
+@router.post("/import-csv")
+async def import_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_admin_user),
+):
+    """Add records from a CSV export without deleting existing rows. Admin only."""
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")  # handle BOM from Excel CSV exports
+    except UnicodeDecodeError:
+        text = raw.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    fieldnames = reader.fieldnames or []
+
+    inserted = 0
+    skipped = 0
+    errors = []
+
+    # Group rows by tipo_cirugia
+    rows_by_tipo: dict[str, list[dict]] = {}
+    for row in reader:
+        tipo = row.get("tipo_cirugia", "").strip().lower()
+        if not tipo:
+            tipo = _detect_tipo(fieldnames)
+        if tipo not in MODEL_MAP:
+            skipped += 1
+            continue
+        rows_by_tipo.setdefault(tipo, []).append(row)
+
+    for tipo, rows in rows_by_tipo.items():
+        Model = MODEL_MAP[tipo]
+        # Get valid column names for this model
+        valid_cols = {c.key for c in Model.__table__.columns}
+
+        for i, row in enumerate(rows):
+            try:
+                kwargs: dict = {}
+                for col, val in row.items():
+                    col = col.strip()
+                    if col in _SKIP or col == "tipo_cirugia":
+                        continue
+                    if col not in valid_cols:
+                        continue
+                    if val == "" or val is None:
+                        kwargs[col] = None
+                    elif col in DATE_COLS:
+                        kwargs[col] = _parse_date(val)
+                    else:
+                        kwargs[col] = val
+                # Always stamp creator
+                kwargs["created_by"] = current_user.username
+                kwargs["created_at"] = datetime.utcnow()
+                db.add(Model(**kwargs))
+                inserted += 1
+            except Exception as e:
+                errors.append(f"Fila {i+1} ({tipo}): {e}")
+                skipped += 1
+
+    db.commit()
+
+    result = {"ok": True, "insertados": inserted, "omitidos": skipped}
+    if errors:
+        result["errores"] = errors[:20]  # cap at 20 to avoid huge response
+    return result

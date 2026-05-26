@@ -114,7 +114,10 @@ async function doLogin() {
     currentUser = data;
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('user-badge').textContent = data.nombre_completo || data.username;
-    if (data.es_admin) document.getElementById('nav-admin').classList.remove('hidden');
+    if (data.es_admin) {
+      document.getElementById('nav-admin').classList.remove('hidden');
+      document.getElementById('security-panel').classList.remove('hidden');
+    }
     initApp();
   } catch (e) {
     errEl.textContent = e.message;
@@ -145,7 +148,10 @@ window.addEventListener('DOMContentLoaded', () => {
         currentUser = data;
         document.getElementById('login-screen').style.display = 'none';
         document.getElementById('user-badge').textContent = data.nombre_completo || data.username;
-        if (data.es_admin) document.getElementById('nav-admin').classList.remove('hidden');
+        if (data.es_admin) {
+          document.getElementById('nav-admin').classList.remove('hidden');
+          document.getElementById('security-panel').classList.remove('hidden');
+        }
         initApp();
       }
     }).catch(() => {});
@@ -916,6 +922,85 @@ function doExport(format) {
       URL.revokeObjectURL(burl);
     })
     .catch(e => showToast(e.message, 'error'));
+}
+
+// ── Backup ───────────────────────────────────────────────────
+async function doBackup() {
+  try {
+    const res = await fetch('/api/export/backup', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Error al descargar backup');
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename=(.+)/);
+    const filename = match ? match[1] : 'backup_coloproctologia.db';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Backup descargado correctamente');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ── Restore ──────────────────────────────────────────────────
+async function doRestore() {
+  const fileInput = document.getElementById('restore-file');
+  const file = fileInput.files[0];
+  if (!file) { showToast('Selecciona un archivo .db', 'warn'); return; }
+  const ok = confirm(
+    '⚠️ ATENCIÓN: Esta acción reemplazará TODA la base de datos actual con el archivo seleccionado.\n\n' +
+    'Se perderán todos los registros que no estén incluidos en el backup.\n\n' +
+    '¿Deseas continuar?'
+  );
+  if (!ok) return;
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/export/restore', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    if (!res.ok) throw new Error(data.detail || 'Error al restaurar');
+    showToast(data.message || 'Base de datos restaurada correctamente');
+    fileInput.value = '';
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ── Import CSV ───────────────────────────────────────────────
+async function doImportCsv() {
+  const fileInput = document.getElementById('import-csv-file');
+  const file = fileInput.files[0];
+  if (!file) { showToast('Selecciona un archivo .csv', 'warn'); return; }
+  const ok = confirm(
+    'Se añadirán los registros del CSV a la base de datos sin borrar los existentes.\n\n¿Deseas continuar?'
+  );
+  if (!ok) return;
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/export/import-csv', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
+    });
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    if (!res.ok) throw new Error(data.detail || 'Error al importar');
+    let msg = `Importación completada: ${data.insertados} registros añadidos`;
+    if (data.omitidos) msg += `, ${data.omitidos} omitidos`;
+    showToast(msg);
+    if (data.errores && data.errores.length) {
+      console.warn('Errores de importación:', data.errores);
+    }
+    fileInput.value = '';
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 // ── Admin users ──────────────────────────────────────────────
