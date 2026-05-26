@@ -51,7 +51,7 @@ Hospital Universitario Miguel Servet (HUMS) de Zaragoza.
 - Logo HUMS y texto "Unidad de Cirugía Coloproctología" en pantalla de login
 
 ## Configuración Railway
-- Volumen: /data (1GB)
+- Volumen: /data (1GB) — mountPath="/data" en railway.toml
 - Región: europe-west4 (Países Bajos)
 - Variable de entorno: SECRET_KEY=coloproctologia_hums_2024
 
@@ -60,3 +60,4 @@ Hospital Universitario Miguel Servet (HUMS) de Zaragoza.
 - Las rutas de los routers usan "" en lugar de "/" para evitar error 405
 - Python 3.11 (no 3.14 — incompatible con pydantic-core)
 - El archivo .python-version contiene "3.11.9"
+- DB en /data/coloproctologia.db (volumen Railway en /data). Si se cambia mountPath hay que actualizar también database.py
