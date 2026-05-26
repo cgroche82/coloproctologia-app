@@ -49,6 +49,9 @@ Hospital Universitario Miguel Servet (HUMS) de Zaragoza.
 - **Restaurar backup** (.db) con validación SQLite y confirmación — solo admin (`POST /api/export/restore`)
 - **Importar CSV** sin borrar registros existentes, detección automática de tipo de cirugía — solo admin (`POST /api/export/import-csv`)
 - Logo HUMS y texto "Unidad de Cirugía Coloproctología" en pantalla de login
+- **Cambiar propia contraseña** — botón de llave en topbar, requiere contraseña actual (`POST /api/auth/change-password`)
+- **Admin cambia contraseña de cualquier usuario** — botón en tabla de usuarios (`PATCH /api/admin/usuarios/{uid}/password`)
+- **Recuperación por código temporal** — enlace "¿Olvidaste tu contraseña?" en login; genera código de 6 dígitos de un solo uso válido 30 min, visible solo en logs de Railway (`POST /api/auth/recovery-code` + `POST /api/auth/reset-password`)
 
 ## Configuración Railway
 - Volumen: /data (1GB) — mountPath="/data" en railway.toml
@@ -61,3 +64,5 @@ Hospital Universitario Miguel Servet (HUMS) de Zaragoza.
 - Python 3.11 (no 3.14 — incompatible con pydantic-core)
 - El archivo .python-version contiene "3.11.9"
 - DB en /data/coloproctologia.db (volumen Railway en /data). Si se cambia mountPath hay que actualizar también database.py
+- Los códigos de recuperación de contraseña son efímeros (solo en memoria RAM); se pierden al reiniciar el servidor
+- Bug edición corregido: clearForm() reseteaba editMode → ahora se llama antes de asignar editMode/editId/editTipo
