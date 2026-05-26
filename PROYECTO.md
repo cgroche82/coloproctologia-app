@@ -20,7 +20,7 @@ Hospital Universitario Miguel Servet (HUMS) de Zaragoza.
 
 ## Estructura
 - main.py — FastAPI app principal
-- database.py — SQLAlchemy, 4 tablas separadas por tipo de cirugía
+- database.py — SQLAlchemy, 4 tablas separadas por tipo de cirugía + recreate_engine()
 - auth.py — JWT + bcrypt (SIN passlib, usa import bcrypt directamente)
 - schemas.py — Pydantic models
 - routers/colorrectal.py — CRUD Cirugía Colorrectal
@@ -28,7 +28,7 @@ Hospital Universitario Miguel Servet (HUMS) de Zaragoza.
 - routers/funcionales.py — CRUD Trastornos Funcionales
 - routers/general.py — CRUD Cirugía General
 - routers/stats.py — Estadísticas y KPIs dashboard
-- routers/export.py — Exportación CSV y Excel
+- routers/export.py — Exportación CSV y Excel + backup/restaurar/importar CSV
 - templates/index.html — SPA completa
 - static/js/app.js — Lógica frontend
 - static/logo_hums.jpg — Logo Hospital Miguel Servet
@@ -39,12 +39,16 @@ Hospital Universitario Miguel Servet (HUMS) de Zaragoza.
 3. Trastornos Funcionales (trastornos_funcionales)
 4. Cirugía General (cirugia_general)
 
-## Bugs conocidos / pendientes de arreglar
-- Dashboard Global da Internal Server Error
-- Exportación Excel con columnas desordenadas (campos específicos antes que comunes)
-- Dashboard Colorrectal necesita más métricas (ver lista en conversación)
-- Dashboard Proctología/Funcionales/General necesita métricas básicas
-- Paso 4 formulario Proctología/Funcionales/General: eliminar sección oncológica
+## Funcionalidades implementadas
+- Formulario wizard 4 pasos con 4 tipos de cirugía
+- Base de datos con búsqueda, filtros y paginación
+- Dashboard global y por tipo con gráficos (Chart.js)
+- Exportación CSV y Excel con columnas ordenadas
+- Autenticación JWT con panel de gestión de usuarios
+- **Backup completo** de la BD (.db) — solo admin (`GET /api/export/backup`)
+- **Restaurar backup** (.db) con validación SQLite y confirmación — solo admin (`POST /api/export/restore`)
+- **Importar CSV** sin borrar registros existentes, detección automática de tipo de cirugía — solo admin (`POST /api/export/import-csv`)
+- Logo HUMS y texto "Unidad de Cirugía Coloproctología" en pantalla de login
 
 ## Configuración Railway
 - Volumen: /data (1GB)
