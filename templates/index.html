@@ -88,32 +88,89 @@
 <!-- ─── LOGIN ─────────────────────────────────────────────────── -->
 <div id="login-screen">
   <div class="card p-10 w-full max-w-sm mx-4">
-    <div class="text-center mb-8">
-      <img src="/static/logo_hums.jpg" alt="Hospital Universitario Miguel Servet"
-           style="max-width:150px;width:100%;height:auto;margin:0 auto 14px;display:block;border-radius:6px;"
-           onerror="this.style.display='none'"/>
-      <p class="text-sm font-semibold tracking-wide" style="color:#00897B;">
-        Unidad de Cirugía Coloproctología
-      </p>
-      <p class="text-xs text-gray-400 mt-1 tracking-wide uppercase">Registro Quirúrgico · HUMS</p>
-    </div>
-    <div class="space-y-4">
-      <div>
-        <label class="label">Usuario</label>
-        <input id="login-user" type="text" class="input" placeholder="usuario" value="admin"/>
+
+    <!-- ── Panel login ── -->
+    <div id="login-panel">
+      <div class="text-center mb-8">
+        <img src="/static/logo_hums.jpg" alt="Hospital Universitario Miguel Servet"
+             style="max-width:150px;width:100%;height:auto;margin:0 auto 14px;display:block;border-radius:6px;"
+             onerror="this.style.display='none'"/>
+        <p class="text-sm font-semibold tracking-wide" style="color:#00897B;">
+          Unidad de Cirugía Coloproctología
+        </p>
+        <p class="text-xs text-gray-400 mt-1 tracking-wide uppercase">Registro Quirúrgico · HUMS</p>
       </div>
-      <div>
-        <label class="label">Contraseña</label>
-        <input id="login-pass" type="password" class="input" placeholder="••••••••" value="coloproct2024"/>
+      <div class="space-y-4" autocomplete="off">
+        <div>
+          <label class="label">Usuario</label>
+          <input id="login-user" type="text" class="input" placeholder="usuario" autocomplete="username"/>
+        </div>
+        <div>
+          <label class="label">Contraseña</label>
+          <input id="login-pass" type="password" class="input" placeholder="••••••••" autocomplete="new-password"/>
+        </div>
+        <div id="login-error" class="text-red-600 text-sm hidden"></div>
+        <button onclick="doLogin()" class="btn btn-primary w-full justify-center py-3">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14"/>
+          </svg>
+          Iniciar sesión
+        </button>
+        <div class="text-center pt-1">
+          <button onclick="showRecoveryPanel()" class="text-xs text-gray-400 hover:text-gray-500 underline underline-offset-2">
+            ¿Olvidaste tu contraseña?
+          </button>
+        </div>
       </div>
-      <div id="login-error" class="text-red-600 text-sm hidden"></div>
-      <button onclick="doLogin()" class="btn btn-primary w-full justify-center py-3">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14"/>
-        </svg>
-        Iniciar sesión
-      </button>
     </div>
+
+    <!-- ── Panel recuperación ── -->
+    <div id="recovery-panel" class="hidden">
+      <div class="text-center mb-6">
+        <div class="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center" style="background:#e8f5e9">
+          <svg class="w-6 h-6" style="color:#00897B" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+          </svg>
+        </div>
+        <h2 class="font-bold text-gray-800">Recuperar contraseña</h2>
+        <p class="text-xs text-gray-500 mt-1">El administrador recibirá el código en los logs del servidor</p>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="label">Tu usuario</label>
+          <input id="recovery-user" type="text" class="input" placeholder="usuario" autocomplete="off"/>
+        </div>
+        <button onclick="requestRecoveryCode()" class="btn btn-primary w-full justify-center py-2.5 text-sm">
+          Solicitar código
+        </button>
+        <div id="recovery-code-sent" class="hidden rounded-lg p-3 text-xs text-center" style="background:#e8f5e9;color:#1b5e20;">
+          ✓ Código generado. El administrador puede verlo en los logs de Railway.<br>Introduce el código cuando te lo facilite.
+        </div>
+        <div>
+          <label class="label">Código de 6 dígitos</label>
+          <input id="recovery-code" type="text" class="input" placeholder="123456" maxlength="6" autocomplete="off"/>
+        </div>
+        <div>
+          <label class="label">Nueva contraseña</label>
+          <input id="recovery-newpass" type="password" class="input" placeholder="mínimo 6 caracteres" autocomplete="new-password"/>
+        </div>
+        <div>
+          <label class="label">Confirmar nueva contraseña</label>
+          <input id="recovery-newpass2" type="password" class="input" placeholder="repite la contraseña" autocomplete="new-password"/>
+        </div>
+        <div id="recovery-error" class="text-red-600 text-xs hidden"></div>
+        <button onclick="resetPasswordWithCode()" class="btn btn-primary w-full justify-center py-2.5 text-sm">
+          Restablecer contraseña
+        </button>
+        <div class="text-center">
+          <button onclick="showLoginPanel()" class="text-xs text-gray-400 hover:text-gray-500 underline underline-offset-2">
+            ← Volver al inicio de sesión
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -205,6 +262,13 @@
     </div>
     <div class="flex items-center gap-3 flex-shrink-0">
       <span id="user-badge" class="text-sm text-gray-500 hidden sm:inline"></span>
+      <button id="btn-own-password" onclick="openOwnPasswordModal()"
+              class="hidden btn btn-ghost p-1.5 rounded-lg" title="Cambiar mi contraseña">
+        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+        </svg>
+      </button>
     </div>
   </div>
 
@@ -977,6 +1041,55 @@
       <div class="flex gap-3">
         <button onclick="closeModal('user-modal')" class="btn btn-ghost flex-1">Cancelar</button>
         <button onclick="createUser()" class="btn btn-primary flex-1">Crear</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── OWN PASSWORD MODAL ───────────────────────────────────── -->
+<div id="own-password-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('own-password-modal')">
+  <div class="card w-full max-w-sm mx-4 p-6">
+    <h2 class="font-bold text-gray-900 mb-4">Cambiar mi contraseña</h2>
+    <div class="space-y-4">
+      <div>
+        <label class="label">Contraseña actual</label>
+        <input id="own-pass-current" type="password" class="input" autocomplete="current-password"/>
+      </div>
+      <div>
+        <label class="label">Nueva contraseña</label>
+        <input id="own-pass-new" type="password" class="input" placeholder="mínimo 6 caracteres" autocomplete="new-password"/>
+      </div>
+      <div>
+        <label class="label">Confirmar nueva contraseña</label>
+        <input id="own-pass-new2" type="password" class="input" autocomplete="new-password"/>
+      </div>
+      <div id="own-pass-error" class="text-red-600 text-xs hidden"></div>
+      <div class="flex gap-3">
+        <button onclick="closeModal('own-password-modal')" class="btn btn-ghost flex-1">Cancelar</button>
+        <button onclick="changeOwnPassword()" class="btn btn-primary flex-1">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── ADMIN PASSWORD MODAL ─────────────────────────────────── -->
+<div id="admin-password-modal" class="modal-overlay" onclick="if(event.target===this)closeModal('admin-password-modal')">
+  <div class="card w-full max-w-sm mx-4 p-6">
+    <h2 class="font-bold text-gray-900 mb-1">Cambiar contraseña</h2>
+    <p id="admin-pass-username-label" class="text-sm text-gray-500 mb-4"></p>
+    <div class="space-y-4">
+      <div>
+        <label class="label">Nueva contraseña</label>
+        <input id="admin-pass-new" type="password" class="input" placeholder="mínimo 6 caracteres" autocomplete="new-password"/>
+      </div>
+      <div>
+        <label class="label">Confirmar nueva contraseña</label>
+        <input id="admin-pass-new2" type="password" class="input" autocomplete="new-password"/>
+      </div>
+      <div id="admin-pass-error" class="text-red-600 text-xs hidden"></div>
+      <div class="flex gap-3">
+        <button onclick="closeModal('admin-password-modal')" class="btn btn-ghost flex-1">Cancelar</button>
+        <button onclick="changeAdminPassword()" class="btn btn-primary flex-1">Guardar</button>
       </div>
     </div>
   </div>

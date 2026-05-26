@@ -114,6 +114,7 @@ async function doLogin() {
     currentUser = data;
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('user-badge').textContent = data.nombre_completo || data.username;
+    document.getElementById('btn-own-password').classList.remove('hidden');
     if (data.es_admin) {
       document.getElementById('nav-admin').classList.remove('hidden');
       document.getElementById('security-panel').classList.remove('hidden');
@@ -148,6 +149,7 @@ window.addEventListener('DOMContentLoaded', () => {
         currentUser = data;
         document.getElementById('login-screen').style.display = 'none';
         document.getElementById('user-badge').textContent = data.nombre_completo || data.username;
+        document.getElementById('btn-own-password').classList.remove('hidden');
         if (data.es_admin) {
           document.getElementById('nav-admin').classList.remove('hidden');
           document.getElementById('security-panel').classList.remove('hidden');
@@ -722,8 +724,8 @@ async function viewDetail(tipo, id) {
 async function editRecord(tipo, id) {
   try {
     const record = await api('GET', `/api/${tipo}/${id}`);
-    editMode = true; editId = id; editTipo = tipo;
-    clearForm();
+    clearForm();                              // resets editMode → false primero
+    editMode = true; editId = id; editTipo = tipo;  // luego fijamos modo edición
     goToStep(1);
     showSection('formulario');
     document.getElementById('f-id').value = id;
@@ -1003,6 +1005,110 @@ async function doImportCsv() {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
+// ── Recovery panel (login screen) ────────────────────────────
+function showRecoveryPanel() {
+  document.getElementById('login-panel').classList.add('hidden');
+  document.getElementById('recovery-panel').classList.remove('hidden');
+  document.getElementById('recovery-error').classList.add('hidden');
+  document.getElementById('recovery-code-sent').classList.add('hidden');
+  ['recovery-user','recovery-code','recovery-newpass','recovery-newpass2'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+}
+
+function showLoginPanel() {
+  document.getElementById('recovery-panel').classList.add('hidden');
+  document.getElementById('login-panel').classList.remove('hidden');
+  document.getElementById('login-error').classList.add('hidden');
+}
+
+async function requestRecoveryCode() {
+  const username = document.getElementById('recovery-user').value.trim();
+  if (!username) { showRecoveryError('Introduce tu nombre de usuario'); return; }
+  try {
+    await api('POST', '/api/auth/recovery-code', { username });
+    document.getElementById('recovery-code-sent').classList.remove('hidden');
+    document.getElementById('recovery-error').classList.add('hidden');
+  } catch (e) { showRecoveryError(e.message); }
+}
+
+async function resetPasswordWithCode() {
+  const code = document.getElementById('recovery-code').value.trim();
+  const np  = document.getElementById('recovery-newpass').value;
+  const np2 = document.getElementById('recovery-newpass2').value;
+  if (!code) { showRecoveryError('Introduce el código de 6 dígitos'); return; }
+  if (!np)   { showRecoveryError('Introduce la nueva contraseña'); return; }
+  if (np.length < 6) { showRecoveryError('La contraseña debe tener al menos 6 caracteres'); return; }
+  if (np !== np2) { showRecoveryError('Las contraseñas no coinciden'); return; }
+  try {
+    await api('POST', '/api/auth/reset-password', { code, new_password: np });
+    showLoginPanel();
+    showToast('Contraseña restablecida. Ya puedes iniciar sesión');
+  } catch (e) { showRecoveryError(e.message); }
+}
+
+function showRecoveryError(msg) {
+  const el = document.getElementById('recovery-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+// ── Own password change ──────────────────────────────────────
+function openOwnPasswordModal() {
+  ['own-pass-current','own-pass-new','own-pass-new2'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('own-pass-error').classList.add('hidden');
+  document.getElementById('own-password-modal').classList.add('open');
+}
+
+async function changeOwnPassword() {
+  const current = document.getElementById('own-pass-current').value;
+  const np      = document.getElementById('own-pass-new').value;
+  const np2     = document.getElementById('own-pass-new2').value;
+  const errEl   = document.getElementById('own-pass-error');
+  errEl.classList.add('hidden');
+  if (!current) { errEl.textContent = 'Introduce tu contraseña actual'; errEl.classList.remove('hidden'); return; }
+  if (np.length < 6) { errEl.textContent = 'La nueva contraseña debe tener al menos 6 caracteres'; errEl.classList.remove('hidden'); return; }
+  if (np !== np2) { errEl.textContent = 'Las contraseñas no coinciden'; errEl.classList.remove('hidden'); return; }
+  try {
+    await api('POST', '/api/auth/change-password', { current_password: current, new_password: np });
+    closeModal('own-password-modal');
+    showToast('Contraseña actualizada correctamente');
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove('hidden');
+  }
+}
+
+// ── Admin: change any user's password ───────────────────────
+let _adminPassTargetId = null;
+
+function openAdminPasswordModal(uid, username) {
+  _adminPassTargetId = uid;
+  document.getElementById('admin-pass-username-label').textContent = `Usuario: ${username}`;
+  ['admin-pass-new','admin-pass-new2'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('admin-pass-error').classList.add('hidden');
+  document.getElementById('admin-password-modal').classList.add('open');
+}
+
+async function changeAdminPassword() {
+  const np    = document.getElementById('admin-pass-new').value;
+  const np2   = document.getElementById('admin-pass-new2').value;
+  const errEl = document.getElementById('admin-pass-error');
+  errEl.classList.add('hidden');
+  if (np.length < 6) { errEl.textContent = 'La contraseña debe tener al menos 6 caracteres'; errEl.classList.remove('hidden'); return; }
+  if (np !== np2) { errEl.textContent = 'Las contraseñas no coinciden'; errEl.classList.remove('hidden'); return; }
+  try {
+    await api('PATCH', `/api/admin/usuarios/${_adminPassTargetId}/password`, { new_password: np });
+    closeModal('admin-password-modal');
+    showToast('Contraseña actualizada');
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove('hidden');
+  }
+}
+
 // ── Admin users ──────────────────────────────────────────────
 async function loadAdminUsers() {
   try {
@@ -1016,9 +1122,12 @@ async function loadAdminUsers() {
         <td>${u.nombre_completo || '—'}</td>
         <td>${u.es_admin ? '<span class="badge bg-blue-100 text-blue-800">Admin</span>' : '—'}</td>
         <td>${u.activo ? '<span class="badge bg-green-100 text-green-800">Activo</span>' : '<span class="badge bg-red-100 text-red-800">Inactivo</span>'}</td>
-        <td>
+        <td class="flex gap-1 flex-wrap">
           <button onclick="toggleUser(${u.id})" class="btn btn-ghost text-sm ${u.activo ? 'text-red-600' : 'text-green-600'}">
             ${u.activo ? 'Desactivar' : 'Activar'}
+          </button>
+          <button onclick="openAdminPasswordModal(${u.id}, '${u.username}')" class="btn btn-ghost text-sm text-blue-600">
+            Contraseña
           </button>
         </td>`;
       tbody.appendChild(tr);
