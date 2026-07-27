@@ -214,6 +214,14 @@
       </svg>
       <span class="nav-label">Exportación</span>
     </div>
+    <div id="nav-ajustes" class="nav-item hidden" onclick="showSection('ajustes')" data-section="ajustes">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+      </svg>
+      <span class="nav-label">Ajustes</span>
+    </div>
     <div id="nav-admin" class="nav-item hidden" onclick="showSection('admin')" data-section="admin">
       <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -342,12 +350,9 @@
             </div>
             <div class="md:col-span-2">
               <label class="label">Cirujano <span class="text-red-500">*</span></label>
+              <!-- Se rellena desde el catálogo (Ajustes) al iniciar sesión -->
               <select id="f-cirujano" class="input">
                 <option value="">— Seleccionar —</option>
-                <option>DR. MARTÍNEZ</option><option>DR. GRACIA</option><option>DRA. SÁNCHEZ</option>
-                <option>DR. SAUDÍ</option><option>DRA. PÉREZ</option><option>DR. LAGUNAS</option>
-                <option>DRA. GASCÓN</option><option>DRA. SANTERO</option><option>DRA. MATUTE</option>
-                <option>DRA. MORENO</option><option>DRA. GIMÉNEZ</option><option>DRA. DE MIGUEL</option>
               </select>
             </div>
           </div>
@@ -717,12 +722,9 @@
           </button>
           <input id="db-filter-fecha-desde" type="date" class="input w-44" placeholder="Desde"/>
           <input id="db-filter-fecha-hasta" type="date" class="input w-44" placeholder="Hasta"/>
+          <!-- Se rellena desde el catálogo (Ajustes) al iniciar sesión -->
           <select id="db-filter-cirujano" class="input w-48">
             <option value="">Todos los cirujanos</option>
-            <option>DR. MARTÍNEZ</option><option>DR. GRACIA</option><option>DRA. SÁNCHEZ</option>
-            <option>DR. SAUDÍ</option><option>DRA. PÉREZ</option><option>DR. LAGUNAS</option>
-            <option>DRA. GASCÓN</option><option>DRA. SANTERO</option><option>DRA. MATUTE</option>
-            <option>DRA. MORENO</option><option>DRA. GIMÉNEZ</option><option>DRA. DE MIGUEL</option>
           </select>
           <select id="db-filter-asa" class="input w-28">
             <option value="">ASA</option>
@@ -981,6 +983,75 @@
       </div>
     </div>
 
+    <!-- ══════════════════ AJUSTES ══════════════════ -->
+    <div id="section-ajustes" class="section">
+
+      <div class="card p-6 mb-6">
+        <div class="mb-5">
+          <h2 class="text-lg font-bold text-gray-900">Catálogo de patologías</h2>
+          <p class="text-sm text-gray-500 mt-1">
+            Lo que aparece en los desplegables del formulario. Al desactivar algo deja de ofrecerse
+            en registros nuevos, pero los casos ya guardados no se modifican.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+          <!-- Tipos -->
+          <div class="border rounded-xl overflow-hidden">
+            <div class="px-4 py-2.5 bg-gray-50 border-b">
+              <h3 class="font-semibold text-sm text-gray-700">Tipo de cirugía</h3>
+            </div>
+            <div id="aj-tipos" class="divide-y max-h-96 overflow-y-auto"></div>
+          </div>
+
+          <!-- Diagnósticos -->
+          <div class="border rounded-xl overflow-hidden">
+            <div class="px-4 py-2.5 bg-gray-50 border-b flex justify-between items-center gap-2">
+              <h3 class="font-semibold text-sm text-gray-700">Diagnósticos</h3>
+              <button onclick="nuevoDiagnostico()" class="btn btn-ghost text-xs px-2 py-1 text-blue-600">+ Añadir</button>
+            </div>
+            <div id="aj-diagnosticos" class="divide-y max-h-96 overflow-y-auto">
+              <p class="p-4 text-sm text-gray-400">Selecciona un tipo de cirugía</p>
+            </div>
+          </div>
+
+          <!-- Intervenciones -->
+          <div class="border rounded-xl overflow-hidden">
+            <div class="px-4 py-2.5 bg-gray-50 border-b flex justify-between items-center gap-2">
+              <h3 class="font-semibold text-sm text-gray-700">Intervenciones</h3>
+              <button onclick="nuevaIntervencion()" class="btn btn-ghost text-xs px-2 py-1 text-blue-600">+ Añadir</button>
+            </div>
+            <div id="aj-intervenciones" class="divide-y max-h-96 overflow-y-auto">
+              <p class="p-4 text-sm text-gray-400">Selecciona un diagnóstico</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Cirujanos -->
+      <div class="card p-6 max-w-2xl">
+        <div class="flex justify-between items-start mb-5">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Cirujanos</h2>
+            <p class="text-sm text-gray-500 mt-1">
+              Quien deje la unidad se desactiva, no se borra: sigue apareciendo en sus
+              operaciones y en las estadísticas.
+            </p>
+          </div>
+          <button onclick="nuevoCirujano()" class="btn btn-primary text-sm flex-shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Añadir
+          </button>
+        </div>
+        <div id="aj-cirujanos" class="border rounded-xl divide-y overflow-hidden"></div>
+      </div>
+
+    </div>
+
     <!-- ══════════════════ ADMIN ══════════════════ -->
     <div id="section-admin" class="section">
       <div class="card p-6 max-w-3xl">
@@ -1098,6 +1169,6 @@
 <!-- ─── TOAST ────────────────────────────────────────────────── -->
 <div id="toast" class="fixed bottom-6 right-6 px-5 py-3 rounded-xl text-white font-medium shadow-lg z-50 hidden transition-all text-sm"></div>
 
-<script src="/static/js/app.js"></script>
+<script src="/static/js/app.js?v={{ asset_v }}"></script>
 </body>
 </html>

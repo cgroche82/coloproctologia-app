@@ -37,7 +37,8 @@ class ResetPasswordRequest(BaseModel):
 
 # ── In-memory recovery codes: {code: (username, expires_timestamp)} ───────────
 _recovery_codes: dict[str, tuple[str, float]] = {}
-from routers import colorrectal, proctologia, funcionales, general, stats, export
+from routers import colorrectal, proctologia, funcionales, general, stats, export, catalogos
+from seed_catalogos import seed_catalogos
 
 app = FastAPI(title="Registro Quirúrgico Coloproctología", version="1.0.0")
 
@@ -57,6 +58,7 @@ app.include_router(funcionales.router)
 app.include_router(general.router)
 app.include_router(stats.router)
 app.include_router(export.router)
+app.include_router(catalogos.router)
 
 
 @app.on_event("startup")
@@ -65,6 +67,8 @@ def startup():
     db = next(get_db())
     try:
         init_admin_user(db)
+        # Sólo siembra lo que falte: no pisa lo editado desde Ajustes
+        seed_catalogos(db)
     finally:
         db.close()
 
@@ -233,7 +237,24 @@ def reset_password_with_code(data: ResetPasswordRequest, db: Session = Depends(g
     return {"ok": True}
 
 
+def _version_estatica() -> str:
+    """
+    Sello de versión para app.js, tomado de su fecha de modificación.
+
+    Sin esto el navegador puede seguir usando un app.js cacheado tras
+    actualizar la aplicación, mostrando una versión antigua de la interfaz
+    contra un backend nuevo.
+    """
+    try:
+        ruta = os.path.join(BASE_DIR, "static", "js", "app.js")
+        return str(int(os.path.getmtime(ruta)))
+    except OSError:
+        return "1"
+
+
 @app.get("/", response_class=HTMLResponse)
 @app.get("/{path:path}", response_class=HTMLResponse)
 def index(request: Request, path: str = ""):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(
+        "index.html", {"request": request, "asset_v": _version_estatica()}
+    )

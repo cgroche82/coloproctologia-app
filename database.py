@@ -1,8 +1,11 @@
 import os
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Date, Float, Boolean, Text, DateTime
+from sqlalchemy import (
+    create_engine, Column, Integer, String, Date, Float, Boolean, Text,
+    DateTime, ForeignKey,
+)
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, relationship
 
 DB_PATH = os.environ.get("DB_PATH", "/data/coloproctologia.db")
 _db_dir = os.path.dirname(DB_PATH)
@@ -113,6 +116,56 @@ class TrastornosFuncionales(Base, CommonFields):
 
 class CirugiaGeneral(Base, CommonFields):
     __tablename__ = "cirugia_general"
+
+
+# ── Catálogos editables desde Ajustes ────────────────────────────────────────
+# Los registros guardan diagnóstico/intervención/cirujano como TEXTO, así que
+# modificar estos catálogos nunca altera los casos ya grabados. Por eso basta
+# con un flag activo/inactivo y no hacen falta vigencias por fecha.
+
+class TipoCirugia(Base):
+    __tablename__ = "tipos_cirugia"
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String(50), unique=True, nullable=False, index=True)
+    nombre = Column(String(100), nullable=False)
+    color = Column(String(20), default="#1565C0")
+    tiene_oncologico = Column(Boolean, default=False)
+    orden = Column(Integer, default=0)
+    activo = Column(Boolean, default=True)
+
+
+class Diagnostico(Base):
+    __tablename__ = "diagnosticos"
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(200), nullable=False)
+    tipo_id = Column(Integer, ForeignKey("tipos_cirugia.id"), nullable=False, index=True)
+    # Decide si el formulario muestra el bloque oncológico (TNM, adyuvancia…).
+    # Antes se deducía de que el nombre empezase por "Neoplasia", lo que dejaba
+    # fuera cualquier diagnóstico oncológico con otro nombre.
+    es_oncologico = Column(Boolean, default=False)
+    orden = Column(Integer, default=0)
+    activo = Column(Boolean, default=True)
+
+    tipo = relationship("TipoCirugia")
+
+
+class Intervencion(Base):
+    __tablename__ = "intervenciones"
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(200), nullable=False)
+    diagnostico_id = Column(Integer, ForeignKey("diagnosticos.id"), nullable=False, index=True)
+    orden = Column(Integer, default=0)
+    activo = Column(Boolean, default=True)
+
+    diagnostico = relationship("Diagnostico")
+
+
+class Cirujano(Base):
+    __tablename__ = "cirujanos"
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(100), unique=True, nullable=False)
+    orden = Column(Integer, default=0)
+    activo = Column(Boolean, default=True)
 
 
 class Usuario(Base):

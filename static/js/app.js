@@ -1,4 +1,4 @@
-// ═══════════════════════════════════════════════════════════════
+﻿// ═══════════════════════════════════════════════════════════════
 //  Coloproctología — Registro Quirúrgico  |  app.js
 // ═══════════════════════════════════════════════════════════════
 
@@ -14,59 +14,69 @@ let dbCurrentTab = 'todos';
 let dbTotalPages = 1;
 let charts = {};
 
-// ── Listas dinámicas ─────────────────────────────────────────
-const DIAGNOSTICOS = {
-  colorrectal: [
-    'Neoplasia de Colon Derecho','Neoplasia de Colon Transverso','Neoplasia de Colon Izquierdo',
-    'Neoplasia de Sigma','Neoplasia de Recto','Neoplasia de Ano','Neoplasia de Intestino Delgado',
-    'Diverticulitis','Enfermedad Inflamatoria Intestinal','Colitis Isquémica','Colostomía','Ileostomía'
-  ],
-  proctologia: [
-    'Fístula Perianal','Fístula Sacrococcígea','Absceso Perianal','Hemorroides','Fisura Anal',
-    'Crohn Perianal','Prolapso Rectal','Cuerpo Extraño Anorrectal','Condilomas Anales','Gangrena de Fournier'
-  ],
-  funcionales: ['Incontinencia Fecal','Rectocele'],
-  general: [
-    'Hernia Inguinal','Hernia Umbilical','Eventración','Colelitiasis','Colecistitis',
-    'Obstrucción Intestinal','Perforación Gastroduodenal','Apendicitis','Hernia Paraostomal'
-  ]
-};
+// ── Catálogo (se carga desde /api/catalogos/arbol al iniciar sesión) ──
+// Diagnósticos, intervenciones y cirujanos estaban aquí escritos a fuego;
+// ahora viven en la base de datos y se editan desde Ajustes. Los valores
+// iniciales están en seed_catalogos.py.
+// Sólo lo ACTIVO: alimenta los desplegables del formulario
+let CATALOGO = [];          // [{slug, nombre, tiene_oncologico, diagnosticos:[…]}]
+let CIRUJANOS = [];         // [{id, nombre, activo}]
+// Todo, incluido lo desactivado: alimenta la pantalla de Ajustes, donde hay
+// que poder ver y reactivar lo que está dado de baja
+let CATALOGO_ADMIN = [];
+let CIRUJANOS_ADMIN = [];
 
-const INTERVENCIONES = {
-  'Neoplasia de Colon Derecho': ['Resección Intestino Delgado','Resección Ileocecal','Hemicolectomía Derecha','Hemicolectomía Derecha Ampliada','Resección Segmentaria Ángulo Esplénico','Hemicolectomía Izquierda','Sigmoidectomía','Colectomía Subtotal','Colectomía Total','Panproctocolectomía','Resección Anterior + EPM','Resección Anterior + ETM','Amputación Abdominoperineal','Hartmann','Resección Endoanal','TAMIS','Estoma Derivativo','Reconstrucción de Tránsito','Cierre de Ileostomía'],
-  'Neoplasia de Colon Transverso': ['Resección Intestino Delgado','Resección Ileocecal','Hemicolectomía Derecha','Hemicolectomía Derecha Ampliada','Resección Segmentaria Ángulo Esplénico','Hemicolectomía Izquierda','Sigmoidectomía','Colectomía Subtotal','Colectomía Total','Panproctocolectomía','Resección Anterior + EPM','Resección Anterior + ETM','Amputación Abdominoperineal','Hartmann','Resección Endoanal','TAMIS','Estoma Derivativo','Reconstrucción de Tránsito','Cierre de Ileostomía'],
-  'Neoplasia de Colon Izquierdo': ['Resección Intestino Delgado','Resección Ileocecal','Hemicolectomía Derecha','Hemicolectomía Derecha Ampliada','Resección Segmentaria Ángulo Esplénico','Hemicolectomía Izquierda','Sigmoidectomía','Colectomía Subtotal','Colectomía Total','Panproctocolectomía','Resección Anterior + EPM','Resección Anterior + ETM','Amputación Abdominoperineal','Hartmann','Resección Endoanal','TAMIS','Estoma Derivativo','Reconstrucción de Tránsito','Cierre de Ileostomía'],
-  'Neoplasia de Sigma': ['Resección Intestino Delgado','Resección Ileocecal','Hemicolectomía Derecha','Hemicolectomía Derecha Ampliada','Resección Segmentaria Ángulo Esplénico','Hemicolectomía Izquierda','Sigmoidectomía','Colectomía Subtotal','Colectomía Total','Panproctocolectomía','Resección Anterior + EPM','Resección Anterior + ETM','Amputación Abdominoperineal','Hartmann','Resección Endoanal','TAMIS','Estoma Derivativo','Reconstrucción de Tránsito','Cierre de Ileostomía'],
-  'Neoplasia de Recto': ['Resección Intestino Delgado','Resección Ileocecal','Hemicolectomía Derecha','Hemicolectomía Derecha Ampliada','Resección Segmentaria Ángulo Esplénico','Hemicolectomía Izquierda','Sigmoidectomía','Colectomía Subtotal','Colectomía Total','Panproctocolectomía','Resección Anterior + EPM','Resección Anterior + ETM','Amputación Abdominoperineal','Hartmann','Resección Endoanal','TAMIS','Estoma Derivativo','Reconstrucción de Tránsito','Cierre de Ileostomía'],
-  'Neoplasia de Ano': ['Resección Intestino Delgado','Resección Ileocecal','Hemicolectomía Derecha','Hemicolectomía Derecha Ampliada','Resección Segmentaria Ángulo Esplénico','Hemicolectomía Izquierda','Sigmoidectomía','Colectomía Subtotal','Colectomía Total','Panproctocolectomía','Resección Anterior + EPM','Resección Anterior + ETM','Amputación Abdominoperineal','Hartmann','Resección Endoanal','TAMIS','Estoma Derivativo','Reconstrucción de Tránsito','Cierre de Ileostomía'],
-  'Neoplasia de Intestino Delgado': ['Resección Intestino Delgado','Resección Ileocecal','Hemicolectomía Derecha','Hemicolectomía Derecha Ampliada','Resección Segmentaria Ángulo Esplénico','Hemicolectomía Izquierda','Sigmoidectomía','Colectomía Subtotal','Colectomía Total','Panproctocolectomía','Resección Anterior + EPM','Resección Anterior + ETM','Amputación Abdominoperineal','Hartmann','Resección Endoanal','TAMIS','Estoma Derivativo','Reconstrucción de Tránsito','Cierre de Ileostomía'],
-  'Diverticulitis': ['Resección Intestino Delgado','Resección Ileocecal','Hemicolectomía Derecha','Hemicolectomía Derecha Ampliada','Resección Segmentaria Ángulo Esplénico','Hemicolectomía Izquierda','Sigmoidectomía','Colectomía Subtotal','Colectomía Total','Panproctocolectomía','Resección Anterior + EPM','Resección Anterior + ETM','Amputación Abdominoperineal','Hartmann','Resección Endoanal','TAMIS','Estoma Derivativo','Reconstrucción de Tránsito','Cierre de Ileostomía'],
-  'Enfermedad Inflamatoria Intestinal': ['Resección Intestino Delgado','Resección Ileocecal','Hemicolectomía Derecha','Hemicolectomía Derecha Ampliada','Resección Segmentaria Ángulo Esplénico','Hemicolectomía Izquierda','Sigmoidectomía','Colectomía Subtotal','Colectomía Total','Panproctocolectomía','Resección Anterior + EPM','Resección Anterior + ETM','Amputación Abdominoperineal','Hartmann','Resección Endoanal','TAMIS','Estoma Derivativo','Reconstrucción de Tránsito','Cierre de Ileostomía'],
-  'Colitis Isquémica': ['Resección Intestino Delgado','Resección Ileocecal','Hemicolectomía Derecha','Hemicolectomía Derecha Ampliada','Resección Segmentaria Ángulo Esplénico','Hemicolectomía Izquierda','Sigmoidectomía','Colectomía Subtotal','Colectomía Total','Panproctocolectomía','Resección Anterior + EPM','Resección Anterior + ETM','Amputación Abdominoperineal','Hartmann','Resección Endoanal','TAMIS','Estoma Derivativo','Reconstrucción de Tránsito','Cierre de Ileostomía'],
-  'Colostomía': ['Resección Intestino Delgado','Resección Ileocecal','Hemicolectomía Derecha','Hemicolectomía Derecha Ampliada','Resección Segmentaria Ángulo Esplénico','Hemicolectomía Izquierda','Sigmoidectomía','Colectomía Subtotal','Colectomía Total','Panproctocolectomía','Resección Anterior + EPM','Resección Anterior + ETM','Amputación Abdominoperineal','Hartmann','Resección Endoanal','TAMIS','Estoma Derivativo','Reconstrucción de Tránsito','Cierre de Ileostomía'],
-  'Ileostomía': ['Resección Intestino Delgado','Resección Ileocecal','Hemicolectomía Derecha','Hemicolectomía Derecha Ampliada','Resección Segmentaria Ángulo Esplénico','Hemicolectomía Izquierda','Sigmoidectomía','Colectomía Subtotal','Colectomía Total','Panproctocolectomía','Resección Anterior + EPM','Resección Anterior + ETM','Amputación Abdominoperineal','Hartmann','Resección Endoanal','TAMIS','Estoma Derivativo','Reconstrucción de Tránsito','Cierre de Ileostomía'],
-  'Fístula Perianal': ['Fistulotomía','Fistulectomía','Drenaje + Setón','Colgajo de Avance','LIFT','TROPIS','Esfinteroplastia','Láser'],
-  'Crohn Perianal': ['Fistulotomía','Fistulectomía','Drenaje + Setón','Colgajo de Avance','LIFT','TROPIS','Esfinteroplastia','Láser'],
-  'Hemorroides': ['Milligan-Morgan','Láser','Desarterialización Doppler'],
-  'Absceso Perianal': ['Drenaje Simple','Drenaje + Setón'],
-  'Fisura Anal': ['Esfinterotomía Lateral Interna','Toxina Botulínica'],
-  'Fístula Sacrococcígea': ['Exéresis + Cierre Primario','Exéresis','Marsupialización','Colgajo Cutáneo','Láser'],
-  'Prolapso Rectal': ['Rectopexia Ventral','Rectopexia + Sigmoidectomía','Delorme','Altemeier'],
-  'Cuerpo Extraño Anorrectal': ['Extracción','Extracción + Estoma'],
-  'Condilomas Anales': ['Exéresis'],
-  'Gangrena de Fournier': ['Drenaje + Necrosectomía'],
-  'Incontinencia Fecal': ['NMIS Primer Tiempo','NMIS Segundo Tiempo','Esfinteroplastia'],
-  'Rectocele': ['Reparación Transanal','Reparación Perineal','Rectopexia'],
-  'Hernia Inguinal': ['Hernioplastia','Herniorrafia','TAPP','TEP'],
-  'Hernia Umbilical': ['Hernioplastia','Herniorrafia'],
-  'Eventración': ['Eventroplastia'],
-  'Colelitiasis': ['Colecistectomía'],
-  'Colecistitis': ['Colecistectomía','Colecistostomía','Conservador'],
-  'Obstrucción Intestinal': ['Adhesiolisis','Resección Intestinal','Conservador'],
-  'Perforación Gastroduodenal': ['Sutura','Gastrectomía','Exclusión Duodenal'],
-  'Apendicitis': ['Apendicectomía','Conservador'],
-  'Hernia Paraostomal': ['Sugarbaker','Keyhole','Pauli','Eventroplastia']
-};
+function tipoPorSlug(slug) {
+  return CATALOGO.find(t => t.slug === slug) || null;
+}
+
+function diagnosticosDe(slug) {
+  const t = tipoPorSlug(slug);
+  return t ? t.diagnosticos : [];
+}
+
+function diagnosticoPorNombre(slug, nombre) {
+  return diagnosticosDe(slug).find(d => d.nombre === nombre) || null;
+}
+
+async function loadCatalogo() {
+  try {
+    CATALOGO = await api('GET', '/api/catalogos/arbol') || [];
+    CIRUJANOS = await api('GET', '/api/catalogos/cirujanos') || [];
+    poblarSelectsCirujano();
+  } catch (e) {
+    showToast('No se pudo cargar el catálogo: ' + e.message, 'error');
+  }
+}
+
+function poblarSelectsCirujano() {
+  // Filtra por activo aquí mismo: así la función es correcta aunque la llamen
+  // desde Ajustes, donde CIRUJANOS podría traer también los desactivados
+  const activos = CIRUJANOS.filter(c => c.activo);
+  [['f-cirujano', '— Seleccionar —'], ['db-filter-cirujano', 'Todos los cirujanos']]
+    .forEach(([id, vacio]) => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      const actual = sel.value;
+      sel.innerHTML = `<option value="">${vacio}</option>`;
+      activos.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.nombre; o.textContent = c.nombre;
+        sel.appendChild(o);
+      });
+      // Conserva la selección aunque el cirujano ya no esté activo (al editar
+      // un caso antiguo no debe perderse quién lo operó)
+      if (actual) {
+        if (!activos.some(c => c.nombre === actual)) {
+          const o = document.createElement('option');
+          o.value = actual; o.textContent = actual;
+          sel.appendChild(o);
+        }
+        sel.value = actual;
+      }
+    });
+}
+
 
 // ── API helper ───────────────────────────────────────────────
 async function api(method, url, body = null) {
@@ -117,6 +127,7 @@ async function doLogin() {
     document.getElementById('btn-own-password').classList.remove('hidden');
     if (data.es_admin) {
       document.getElementById('nav-admin').classList.remove('hidden');
+      document.getElementById('nav-ajustes').classList.remove('hidden');
       document.getElementById('security-panel').classList.remove('hidden');
     }
     initApp();
@@ -135,6 +146,9 @@ function doLogout() {
 // ── Init ─────────────────────────────────────────────────────
 async function initApp() {
   buildRecidivaTable();
+  // El catálogo debe estar cargado antes de poblar los desplegables del paso 2
+  await loadCatalogo();
+  onTipoCirugia();
   await loadNextId();
   showSection('formulario');
   // Check login on enter key
@@ -152,6 +166,7 @@ window.addEventListener('DOMContentLoaded', () => {
         document.getElementById('btn-own-password').classList.remove('hidden');
         if (data.es_admin) {
           document.getElementById('nav-admin').classList.remove('hidden');
+          document.getElementById('nav-ajustes').classList.remove('hidden');
           document.getElementById('security-panel').classList.remove('hidden');
         }
         initApp();
@@ -166,7 +181,7 @@ function toggleSidebar() {
 }
 
 // ── Section navigation ───────────────────────────────────────
-const TITLES = { formulario: 'Nuevo Registro', database: 'Base de Datos', dashboard: 'Dashboard', export: 'Exportación', admin: 'Gestión de Usuarios' };
+const TITLES = { formulario: 'Nuevo Registro', database: 'Base de Datos', dashboard: 'Dashboard', export: 'Exportación', ajustes: 'Ajustes', admin: 'Gestión de Usuarios' };
 
 function showSection(name) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -177,6 +192,7 @@ function showSection(name) {
 
   if (name === 'database') { dbCurrentPage = 1; loadDbTable(); }
   if (name === 'dashboard') { loadDashboard('global'); }
+  if (name === 'ajustes') loadAjustes();
   if (name === 'admin') loadAdminUsers();
 }
 
@@ -241,28 +257,31 @@ function onTipoCirugia() {
   const tipo = document.getElementById('f-tipo-cirugia').value;
   const diagSel = document.getElementById('f-diagnostico');
   diagSel.innerHTML = '<option value="">— Seleccionar —</option>';
-  (DIAGNOSTICOS[tipo] || []).forEach(d => {
-    const o = document.createElement('option'); o.value = d; o.textContent = d; diagSel.appendChild(o);
+  diagnosticosDe(tipo).forEach(d => {
+    const o = document.createElement('option'); o.value = d.nombre; o.textContent = d.nombre; diagSel.appendChild(o);
   });
   document.getElementById('f-intervencion').innerHTML = '<option value="">— Seleccione diagnóstico —</option>';
-  document.getElementById('wrap-estoma').classList.toggle('hidden', tipo !== 'colorrectal');
-  // Paso 4: etiqueta dinámica según tipo
-  const isColorrectal = tipo === 'colorrectal';
+  // El estoma de protección y la dehiscencia sólo aplican a tipos con
+  // seguimiento oncológico (antes cableado a "colorrectal")
+  const conOnco = !!tipoPorSlug(tipo)?.tiene_oncologico;
+  document.getElementById('wrap-estoma').classList.toggle('hidden', !conOnco);
   const lbl = document.getElementById('step4-label');
   const ttl = document.getElementById('step4-title');
-  if (lbl) lbl.textContent = isColorrectal ? 'Oncológico' : 'Seguimiento';
-  if (ttl) ttl.textContent = isColorrectal
+  if (lbl) lbl.textContent = conOnco ? 'Oncológico' : 'Seguimiento';
+  if (ttl) ttl.textContent = conOnco
     ? 'Paso 4 — Oncológico · Seguimiento · Observaciones'
     : 'Paso 4 — Seguimiento · Observaciones';
   loadNextId();
 }
 
 function onDiagnostico() {
+  const tipo = document.getElementById('f-tipo-cirugia').value;
   const diag = document.getElementById('f-diagnostico').value;
   const sel = document.getElementById('f-intervencion');
   sel.innerHTML = '<option value="">— Seleccionar —</option>';
-  (INTERVENCIONES[diag] || []).forEach(i => {
-    const o = document.createElement('option'); o.value = i; o.textContent = i; sel.appendChild(o);
+  const d = diagnosticoPorNombre(tipo, diag);
+  (d ? d.intervenciones : []).forEach(i => {
+    const o = document.createElement('option'); o.value = i.nombre; o.textContent = i.nombre; sel.appendChild(o);
   });
   updateOncologicoVisibility();
 }
@@ -302,15 +321,17 @@ function onAdyuvancia() {
 function updateOncologicoVisibility() {
   const tipo = document.getElementById('f-tipo-cirugia').value;
   const diag = document.getElementById('f-diagnostico').value;
-  const isColorrectal = tipo === 'colorrectal';
-  const showOnco = isColorrectal && diag.startsWith('Neoplasia');
-  document.getElementById('wrap-oncologico').classList.toggle('hidden', !showOnco);
-  document.getElementById('wrap-dehiscencia').classList.toggle('hidden', !isColorrectal);
+  // Antes: tipo === 'colorrectal' && diag.startsWith('Neoplasia').
+  // Ahora ambas condiciones son casillas del catálogo, editables en Ajustes.
+  const conOnco = !!tipoPorSlug(tipo)?.tiene_oncologico;
+  const diagOnco = !!diagnosticoPorNombre(tipo, diag)?.es_oncologico;
+  document.getElementById('wrap-oncologico').classList.toggle('hidden', !(conOnco && diagOnco));
+  document.getElementById('wrap-dehiscencia').classList.toggle('hidden', !conOnco);
   // Sync step 4 labels when called from populateForm
   const lbl = document.getElementById('step4-label');
   const ttl = document.getElementById('step4-title');
-  if (lbl) lbl.textContent = isColorrectal ? 'Oncológico' : 'Seguimiento';
-  if (ttl) ttl.textContent = isColorrectal
+  if (lbl) lbl.textContent = conOnco ? 'Oncológico' : 'Seguimiento';
+  if (ttl) ttl.textContent = conOnco
     ? 'Paso 4 — Oncológico · Seguimiento · Observaciones'
     : 'Paso 4 — Seguimiento · Observaciones';
 }
@@ -460,7 +481,22 @@ function collectFormData() {
 }
 
 function populateForm(tipo, record) {
-  const s = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+  const s = (id, val) => {
+    const el = document.getElementById(id);
+    if (!el || val == null) return;
+    // En un <select>, asignar un valor que no figura entre las opciones lo
+    // deja en blanco en silencio, y al guardar se perdería el dato histórico:
+    // un cirujano desactivado o un diagnóstico renombrado desde Ajustes
+    // borraría lo que constaba en un caso ya cerrado. Se añade la opción.
+    if (el.tagName === 'SELECT' && val !== '' &&
+        !Array.from(el.options).some(o => o.value === String(val))) {
+      const o = document.createElement('option');
+      o.value = val;
+      o.textContent = `${val} (retirado)`;
+      el.appendChild(o);
+    }
+    el.value = val;
+  };
   s('f-nhc', record.nhc); s('f-fecha-intervencion', record.fecha_intervencion);
   s('f-fecha-nacimiento', record.fecha_nacimiento); s('f-edad', record.edad);
   s('f-sexo', record.sexo); s('f-asa', record.asa); s('f-cirujano', record.cirujano);
@@ -1108,6 +1144,228 @@ async function changeAdminPassword() {
     errEl.classList.remove('hidden');
   }
 }
+
+// ── AJUSTES: catálogos ───────────────────────────────────────
+let ajTipoSel = null;   // id del tipo seleccionado
+let ajDiagSel = null;   // id del diagnóstico seleccionado
+
+async function loadAjustes() {
+  try {
+    // Aquí sí interesan los inactivos: hay que poder reactivarlos
+    CATALOGO_ADMIN = await api('GET', '/api/catalogos/arbol?incluir_inactivos=true') || [];
+    CIRUJANOS_ADMIN = await api('GET', '/api/catalogos/cirujanos?incluir_inactivos=true') || [];
+    renderTipos();
+    renderDiagnosticos();
+    renderIntervenciones();
+    renderCirujanos();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+/** Tras cualquier cambio: recarga ambos conjuntos y repinta las dos vistas. */
+async function refrescarCatalogo() {
+  await loadCatalogo();   // sólo activo → desplegables del formulario
+  await loadAjustes();    // todo       → pantalla de Ajustes
+  onTipoCirugia();
+}
+
+function fila(nombre, activo, seleccionado, onSelect, acciones) {
+  const div = document.createElement('div');
+  div.className = 'px-3 py-2 flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50' +
+    (seleccionado ? ' bg-blue-50' : '');
+  div.onclick = onSelect;
+  const txt = document.createElement('span');
+  txt.className = 'flex-1 ' + (activo ? 'text-gray-800' : 'text-gray-400 line-through');
+  txt.textContent = nombre;
+  div.appendChild(txt);
+  const box = document.createElement('span');
+  box.className = 'flex gap-1 flex-shrink-0';
+  box.onclick = e => e.stopPropagation();
+  box.innerHTML = acciones;
+  div.appendChild(box);
+  return div;
+}
+
+const BTN = (fn, txt, color) =>
+  `<button onclick="${fn}" class="btn btn-ghost text-xs px-1.5 py-0.5 ${color}">${txt}</button>`;
+
+function renderTipos() {
+  const cont = document.getElementById('aj-tipos');
+  cont.innerHTML = '';
+  CATALOGO_ADMIN.forEach(t => {
+    const onco = t.tiene_oncologico
+      ? '<span class="badge bg-blue-100 text-blue-800 text-xs">onco</span>' : '';
+    const f = fila(t.nombre, t.activo, ajTipoSel === t.id,
+      () => { ajTipoSel = t.id; ajDiagSel = null; renderTipos(); renderDiagnosticos(); renderIntervenciones(); },
+      onco + BTN(`renombrarTipo(${t.id})`, 'Editar', 'text-blue-600'));
+    const punto = document.createElement('span');
+    punto.className = 'w-2.5 h-2.5 rounded-full flex-shrink-0';
+    punto.style.background = t.color || '#999';
+    f.insertBefore(punto, f.firstChild);
+    cont.appendChild(f);
+  });
+}
+
+function renderDiagnosticos() {
+  const cont = document.getElementById('aj-diagnosticos');
+  cont.innerHTML = '';
+  const tipo = CATALOGO_ADMIN.find(t => t.id === ajTipoSel);
+  if (!tipo) {
+    cont.innerHTML = '<p class="p-4 text-sm text-gray-400">Selecciona un tipo de cirugía</p>';
+    return;
+  }
+  if (!tipo.diagnosticos.length) {
+    cont.innerHTML = '<p class="p-4 text-sm text-gray-400">Sin diagnósticos. Pulsa «Añadir».</p>';
+    return;
+  }
+  tipo.diagnosticos.forEach(d => {
+    const onco = d.es_oncologico
+      ? '<span class="badge bg-purple-100 text-purple-800 text-xs">onco</span>' : '';
+    cont.appendChild(fila(d.nombre, d.activo, ajDiagSel === d.id,
+      () => { ajDiagSel = d.id; renderDiagnosticos(); renderIntervenciones(); },
+      onco +
+      BTN(`toggleOncologico(${d.id})`, 'Onco', 'text-purple-600') +
+      BTN(`renombrarDiagnostico(${d.id})`, 'Editar', 'text-blue-600') +
+      BTN(`toggleDiagnostico(${d.id})`, d.activo ? 'Desactivar' : 'Activar',
+          d.activo ? 'text-red-600' : 'text-green-600')));
+  });
+}
+
+function renderIntervenciones() {
+  const cont = document.getElementById('aj-intervenciones');
+  cont.innerHTML = '';
+  const tipo = CATALOGO_ADMIN.find(t => t.id === ajTipoSel);
+  const diag = tipo && tipo.diagnosticos.find(d => d.id === ajDiagSel);
+  if (!diag) {
+    cont.innerHTML = '<p class="p-4 text-sm text-gray-400">Selecciona un diagnóstico</p>';
+    return;
+  }
+  if (!diag.intervenciones.length) {
+    cont.innerHTML = '<p class="p-4 text-sm text-gray-400">Sin intervenciones. Pulsa «Añadir».</p>';
+    return;
+  }
+  diag.intervenciones.forEach(i => {
+    cont.appendChild(fila(i.nombre, i.activo, false, () => {},
+      BTN(`renombrarIntervencion(${i.id})`, 'Editar', 'text-blue-600') +
+      BTN(`toggleIntervencion(${i.id})`, i.activo ? 'Desactivar' : 'Activar',
+          i.activo ? 'text-red-600' : 'text-green-600')));
+  });
+}
+
+function renderCirujanos() {
+  const cont = document.getElementById('aj-cirujanos');
+  cont.innerHTML = '';
+  if (!CIRUJANOS_ADMIN.length) {
+    cont.innerHTML = '<p class="p-4 text-sm text-gray-400">Sin cirujanos.</p>';
+    return;
+  }
+  CIRUJANOS_ADMIN.forEach(c => {
+    cont.appendChild(fila(c.nombre, c.activo, false, () => {},
+      BTN(`renombrarCirujano(${c.id})`, 'Editar', 'text-blue-600') +
+      BTN(`toggleCirujano(${c.id})`, c.activo ? 'Desactivar' : 'Activar',
+          c.activo ? 'text-red-600' : 'text-green-600')));
+  });
+}
+
+// ── Acciones ─────────────────────────────────────────────────
+async function nuevoDiagnostico() {
+  if (!ajTipoSel) { showToast('Selecciona primero un tipo de cirugía', 'warn'); return; }
+  const nombre = prompt('Nombre del nuevo diagnóstico:');
+  if (!nombre || !nombre.trim()) return;
+  const onco = confirm('¿Es un diagnóstico oncológico?\n\nSi lo es, el formulario mostrará el bloque de TNM, neoadyuvancia y seguimiento.');
+  try {
+    await api('POST', '/api/catalogos/diagnosticos',
+      { nombre: nombre.trim(), tipo_id: ajTipoSel, es_oncologico: onco });
+    await refrescarCatalogo();
+    showToast('Diagnóstico añadido');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function nuevaIntervencion() {
+  if (!ajDiagSel) { showToast('Selecciona primero un diagnóstico', 'warn'); return; }
+  const nombre = prompt('Nombre de la nueva intervención:');
+  if (!nombre || !nombre.trim()) return;
+  try {
+    await api('POST', '/api/catalogos/intervenciones',
+      { nombre: nombre.trim(), diagnostico_id: ajDiagSel });
+    await refrescarCatalogo();
+    showToast('Intervención añadida');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function nuevoCirujano() {
+  const nombre = prompt('Nombre del cirujano (p. ej. DRA. LÓPEZ):');
+  if (!nombre || !nombre.trim()) return;
+  try {
+    await api('POST', '/api/catalogos/cirujanos', { nombre: nombre.trim() });
+    await refrescarCatalogo();
+    showToast('Cirujano añadido');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function _renombrar(url, actual, etiqueta) {
+  const nombre = prompt(`Nuevo nombre para «${actual}»:`, actual);
+  if (!nombre || !nombre.trim() || nombre === actual) return;
+  try {
+    await api('PATCH', url, { nombre: nombre.trim() });
+    await refrescarCatalogo();
+    showToast(`${etiqueta} renombrado`);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function _buscarDiag(did) {
+  for (const t of CATALOGO_ADMIN) {
+    const d = t.diagnosticos.find(x => x.id === did);
+    if (d) return d;
+  }
+  return null;
+}
+
+function renombrarDiagnostico(did) {
+  const d = _buscarDiag(did);
+  if (d) _renombrar(`/api/catalogos/diagnosticos/${did}`, d.nombre, 'Diagnóstico');
+}
+
+function renombrarIntervencion(iid) {
+  for (const t of CATALOGO_ADMIN) {
+    for (const d of t.diagnosticos) {
+      const i = d.intervenciones.find(x => x.id === iid);
+      if (i) return _renombrar(`/api/catalogos/intervenciones/${iid}`, i.nombre, 'Intervención');
+    }
+  }
+}
+
+function renombrarCirujano(cid) {
+  const c = CIRUJANOS_ADMIN.find(x => x.id === cid);
+  if (c) _renombrar(`/api/catalogos/cirujanos/${cid}`, c.nombre, 'Cirujano');
+}
+
+async function renombrarTipo(tid) {
+  const t = CATALOGO_ADMIN.find(x => x.id === tid);
+  if (!t) return;
+  const nombre = prompt(`Nuevo nombre para «${t.nombre}»:`, t.nombre);
+  if (!nombre || !nombre.trim()) return;
+  const onco = confirm('¿Este tipo lleva seguimiento oncológico (TNM, adyuvancia, recidivas)?\n\nAceptar = sí, Cancelar = no.');
+  try {
+    await api('PATCH', `/api/catalogos/tipos/${tid}`,
+      { nombre: nombre.trim(), color: t.color, tiene_oncologico: onco });
+    await refrescarCatalogo();
+    showToast('Tipo actualizado');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function _toggle(url, aviso) {
+  try {
+    await api('PATCH', url);
+    await refrescarCatalogo();
+    if (aviso) showToast(aviso);
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+const toggleDiagnostico  = did => _toggle(`/api/catalogos/diagnosticos/${did}/toggle`);
+const toggleIntervencion = iid => _toggle(`/api/catalogos/intervenciones/${iid}/toggle`);
+const toggleCirujano     = cid => _toggle(`/api/catalogos/cirujanos/${cid}/toggle`);
+const toggleOncologico   = did => _toggle(`/api/catalogos/diagnosticos/${did}/oncologico`,
+                                          'Marca oncológica cambiada');
 
 // ── Admin users ──────────────────────────────────────────────
 async function loadAdminUsers() {
