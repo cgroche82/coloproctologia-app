@@ -7,9 +7,13 @@ Compilar con:   pyinstaller coloproctologia.spec --noconfirm
 Genera dist/RegistroColoproctologia/ (modo onedir). Se eligió onedir en vez de
 onefile porque desde una carpeta de red onefile descomprime ~50 MB en el disco
 local en cada arranque, lo que añade 10-15 s de espera cada vez que se abre.
+
+Sintaxis de PyInstaller 6.x (sin cipher ni block_cipher, eliminados en 6.0).
 """
 
-block_cipher = None
+import os
+
+icono = 'static/logo_hums.ico' if os.path.exists('static/logo_hums.ico') else None
 
 a = Analysis(
     ['launcher.py'],
@@ -61,13 +65,10 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=['tkinter', 'matplotlib', 'numpy', 'pandas', 'pytest'],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
 )
 
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
@@ -85,13 +86,12 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='static/logo_hums.ico' if __import__('os').path.exists('static/logo_hums.ico') else None,
+    icon=icono,
 )
 
 coll = COLLECT(
     exe,
     a.binaries,
-    a.zipfiles,
     a.datas,
     strip=False,
     upx=False,

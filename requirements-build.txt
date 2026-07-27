@@ -1,3 +1,5 @@
 # Dependencias sólo para compilar el ejecutable offline.
 # No hacen falta para ejecutar el servidor.
-pyinstaller==6.6.0
+# Se requiere PyInstaller 6.x: el .spec usa su sintaxis
+# (en 6.0 se eliminaron cipher, block_cipher y win_private_assemblies)
+pyinstaller>=6.6,<7
