@@ -272,7 +272,11 @@ def start_server(port: int):
     import uvicorn
     from main import app
 
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+    # log_config=None: el formateador de uvicorn llama a isatty() sobre stdout,
+    # que en un .exe sin consola no existe y hace petar el arranque
+    config = uvicorn.Config(
+        app, host="127.0.0.1", port=port, log_level="warning", log_config=None
+    )
     server = uvicorn.Server(config)
     # Los manejadores de señales sólo funcionan en el hilo principal
     server.install_signal_handlers = lambda: None
