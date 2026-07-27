@@ -30,14 +30,20 @@ tener Python).
 Estructura resultante:
 
 ```
-\\servidor\buzon\RegistroColoproctologia\
+\\servidor\buzon\APP - Registro Coloproctologia HUMS\
 ├── RegistroColoproctologia.exe     ← ejecutable
-├── coloproctologia.db              ← base de datos (se crea sola)
+├── coloproctologia.db              ← base de datos
+├── LEEME_OFFLINE.md                ← este documento
 ├── registro_app.log                ← registro de incidencias
-├── _internal\                      ← dependencias, no tocar
-├── .coloproctologia.lock           ← control de acceso, no tocar
-└── .coloproctologia.owner          ← control de acceso, no tocar
+└── _internal\                      ← dependencias, no tocar
 ```
+
+Hay además dos archivos **ocultos** (`.coloproctologia.lock` y
+`.coloproctologia.owner`) que controlan que no la abran dos personas a la vez.
+Se ocultan a propósito para que nadie los borre por error. Se regeneran solos.
+
+> **Importante:** hay que copiar la carpeta **completa**. Sin `_internal` el
+> ejecutable no arranca, porque ahí están Python y todas las librerías.
 
 **Credenciales iniciales:** `admin` / `coloproct2024` — cámbiala en el primer
 acceso desde el icono de la llave en la barra superior.

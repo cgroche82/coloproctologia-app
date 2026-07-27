@@ -69,6 +69,22 @@ def log(msg: str) -> None:
         pass
 
 
+def hide_file(path: str) -> None:
+    """
+    Marca el fichero como oculto para que no despiste en la carpeta compartida.
+
+    Ojo: en Windows, abrir un fichero oculto con modo "w" (CREATE_ALWAYS) da
+    error de acceso. Quien escriba sobre un fichero oculto debe borrarlo antes.
+    """
+    if not IS_WINDOWS:
+        return
+    FILE_ATTRIBUTE_HIDDEN = 0x02
+    try:
+        ctypes.windll.kernel32.SetFileAttributesW(str(path), FILE_ATTRIBUTE_HIDDEN)
+    except Exception:  # noqa: BLE001 - es cosmético, nunca debe impedir el arranque
+        pass
+
+
 def message_box(text: str, title: str = APP_NAME, error: bool = False) -> None:
     """Aviso al usuario. En modo ventana no hay consola donde imprimir."""
     if IS_WINDOWS:
@@ -111,12 +127,14 @@ class SingleInstanceLock:
 
     def acquire(self) -> tuple[bool, str]:
         try:
+            # Modo "a+" (OPEN_ALWAYS) sí funciona sobre ficheros ocultos
             self.fh = open(LOCK_FILE, "a+")
             # El fichero debe tener al menos 1 byte para poder bloquearlo
             self.fh.seek(0, os.SEEK_END)
             if self.fh.tell() == 0:
                 self.fh.write("x")
                 self.fh.flush()
+            hide_file(LOCK_FILE)
         except OSError as e:
             return False, f"No se pudo acceder a la carpeta de la aplicación.\n\n{e}"
 
@@ -150,10 +168,15 @@ class SingleInstanceLock:
     @staticmethod
     def _write_owner() -> None:
         try:
+            # Borrar primero: sobrescribir un fichero oculto con "w" falla en
+            # Windows si no se repite el atributo al crearlo
+            if os.path.exists(OWNER_FILE):
+                os.remove(OWNER_FILE)
             with open(OWNER_FILE, "w", encoding="utf-8") as f:
                 f.write(f"{getpass.getuser()}\n")
                 f.write(f"{platform.node()}\n")
                 f.write(datetime.now().strftime("%d/%m/%Y %H:%M"))
+            hide_file(OWNER_FILE)
         except OSError:
             pass
 

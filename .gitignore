@@ -26,6 +26,10 @@ data/*.db-wal
 .coloproctologia.lock
 .coloproctologia.owner
 
+# Carpeta compilada lista para llevar al hospital (47 MB de binarios + BD).
+# Se regenera con build_exe.bat; nunca debe subirse al repositorio.
+APP - Registro Coloproctologia HUMS/
+
 # Environment variables
 .env
 .env.local
