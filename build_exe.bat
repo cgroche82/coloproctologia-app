@@ -4,11 +4,23 @@ REM  Compilar Registro Quirurgico Coloproctologia (HUMS)
 REM  Genera dist\RegistroColoproctologia\
 REM ============================================================
 
+cd /d "%~dp0"
+
+REM Usar el entorno virtual del proyecto si existe
+if exist "venv\Scripts\python.exe" (
+    set PY=venv\Scripts\python.exe
+    echo Usando el entorno virtual del proyecto.
+) else (
+    set PY=python
+    echo No hay venv; usando el Python del sistema.
+)
+
 echo.
-echo === Instalando dependencias de compilacion ===
-python -m pip install --quiet --upgrade pip
-python -m pip install --quiet -r requirements.txt
-python -m pip install --quiet -r requirements-build.txt
+echo === Instalando dependencias ===
+%PY% -m pip install --quiet --upgrade pip
+%PY% -m pip install --quiet -r requirements.txt
+if errorlevel 1 goto error
+%PY% -m pip install --quiet -r requirements-build.txt
 if errorlevel 1 goto error
 
 echo.
@@ -18,7 +30,7 @@ if exist dist rmdir /s /q dist
 
 echo.
 echo === Compilando (puede tardar 1-3 minutos) ===
-python -m PyInstaller coloproctologia.spec --noconfirm
+%PY% -m PyInstaller coloproctologia.spec --noconfirm
 if errorlevel 1 goto error
 
 echo.
