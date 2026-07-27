@@ -6,10 +6,29 @@ Hospital Universitario Miguel Servet (HUMS) de Zaragoza.
 
 ## Stack técnico
 - Backend: Python + FastAPI
-- Base de datos: SQLite en /data/coloproctologia.db (volumen persistente Railway)
+- Base de datos: SQLite
 - Frontend: HTML + Tailwind CSS + Chart.js + JavaScript vanilla
 - Autenticación: JWT con bcrypt (sin passlib)
-- Despliegue: Railway (plan Hobby $5/mes)
+- Despliegue: **offline** (ejecutable Windows) — ver `LEEME_OFFLINE.md`
+
+## Modo de despliegue
+
+Por protección de datos la aplicación se ha retirado de internet y funciona
+**offline** en equipos del hospital:
+
+- `launcher.py` arranca uvicorn en 127.0.0.1 y abre Chrome (o Edge) con
+  `--app=` para que no se vea la barra de direcciones
+- Empaquetado con PyInstaller (`coloproctologia.spec`, `build_exe.bat`)
+- La BD vive junto al ejecutable; el lanzador fija `DB_PATH` antes de importar
+- Alojado en un buzón compartido, con **bloqueo de instancia única**: sólo una
+  persona puede tenerla abierta a la vez
+
+**Por qué el bloqueo:** SQLite no garantiza los bloqueos de fichero sobre SMB.
+Dos equipos escribiendo a la vez pueden corromper la BD sin error visible. El
+bloqueo es por rango de bytes, así que el SO lo libera solo si el proceso muere
+(verificado: matar el proceso de golpe no deja bloqueo fantasma).
+
+El código de Railway se conserva y sigue funcionando si algún día se reactiva.
 
 ## URLs
 - Producción: https://web-production-c69f0.up.railway.app
@@ -19,6 +38,9 @@ Hospital Universitario Miguel Servet (HUMS) de Zaragoza.
 - Admin: admin / coloproct2024
 
 ## Estructura
+- launcher.py — lanzador offline (bloqueo, servidor local, Chrome/Edge modo app)
+- coloproctologia.spec / build_exe.bat — empaquetado PyInstaller
+- LEEME_OFFLINE.md — guía de instalación para el hospital
 - main.py — FastAPI app principal
 - database.py — SQLAlchemy, 4 tablas separadas por tipo de cirugía + recreate_engine()
 - auth.py — JWT + bcrypt (SIN passlib, usa import bcrypt directamente)
@@ -66,3 +88,6 @@ Hospital Universitario Miguel Servet (HUMS) de Zaragoza.
 - DB en /data/coloproctologia.db (volumen Railway en /data). Si se cambia mountPath hay que actualizar también database.py
 - Los códigos de recuperación de contraseña son efímeros (solo en memoria RAM); se pierden al reiniciar el servidor
 - Bug edición corregido: clearForm() reseteaba editMode → ahora se llama antes de asignar editMode/editId/editTipo
+- NO activar modo WAL en SQLite: no funciona sobre unidades de red (requiere memoria compartida)
+- El navegador se lanza con `--user-data-dir` en disco local para forzar un proceso propio al que esperar (si no, Chrome delega en una instancia existente y sale al instante)
+- `.gitignore` bloquea `*.db`: la base de datos con datos de pacientes nunca debe subirse al repositorio

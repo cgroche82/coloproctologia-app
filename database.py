@@ -5,10 +5,16 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 DB_PATH = os.environ.get("DB_PATH", "/data/coloproctologia.db")
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+_db_dir = os.path.dirname(DB_PATH)
+if _db_dir:
+    os.makedirs(_db_dir, exist_ok=True)
 
 SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_PATH}"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+# timeout: margen si el fichero está bloqueado (carpeta compartida)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    connect_args={"check_same_thread": False, "timeout": 15},
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -128,5 +134,8 @@ def recreate_engine():
     """Re-initialize engine and session factory after DB file replacement (restore)."""
     global engine, SessionLocal
     engine.dispose()
-    engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False, "timeout": 15},
+    )
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

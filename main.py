@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import secrets
 from fastapi import FastAPI, Depends, HTTPException
@@ -41,7 +42,11 @@ from routers import colorrectal, proctologia, funcionales, general, stats, expor
 app = FastAPI(title="Registro Quirúrgico Coloproctología", version="1.0.0")
 
 # Static files & templates
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Empaquetado con PyInstaller los recursos viven en la carpeta temporal _MEIPASS
+if getattr(sys, "frozen", False):
+    BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(sys.executable)))
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 

@@ -14,10 +14,17 @@ venv/
 env/
 .env/
 
-# SQLite database (datos locales, no subir a Railway)
+# SQLite database — NUNCA subir: contiene datos de pacientes
+*.db
+*.db-shm
+*.db-wal
 data/*.db
 data/*.db-shm
 data/*.db-wal
+
+# Ficheros de bloqueo de la versión offline
+.coloproctologia.lock
+.coloproctologia.owner
 
 # Environment variables
 .env
