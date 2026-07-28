@@ -364,12 +364,9 @@
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label class="label">Tipo Cirugía <span class="text-red-500">*</span></label>
+              <!-- Se rellena desde el catálogo: los tipos se crean en Ajustes -->
               <select id="f-tipo-cirugia" class="input" onchange="onTipoCirugia()">
                 <option value="">— Seleccionar —</option>
-                <option value="colorrectal">Cirugía Colorrectal</option>
-                <option value="proctologia">Proctología</option>
-                <option value="funcionales">Trastornos Funcionales</option>
-                <option value="general">Cirugía General</option>
               </select>
             </div>
             <div>
@@ -737,11 +734,8 @@
 
       <!-- Tabs -->
       <div class="flex gap-1 mb-4 flex-wrap">
-        <button class="tab-btn tab-btn-todos active" onclick="switchDbTab('todos')">Todos</button>
-        <button class="tab-btn tab-btn-colorrectal" onclick="switchDbTab('colorrectal')">Colorrectal</button>
-        <button class="tab-btn tab-btn-proctologia" onclick="switchDbTab('proctologia')">Proctología</button>
-        <button class="tab-btn tab-btn-funcionales" onclick="switchDbTab('funcionales')">Funcionales</button>
-        <button class="tab-btn tab-btn-general" onclick="switchDbTab('general')">General</button>
+        <!-- Las pestañas se generan desde el catálogo: los tipos son editables -->
+        <div id="db-tabs" class="flex gap-2 flex-wrap"></div>
       </div>
 
       <div class="card overflow-hidden">
@@ -770,13 +764,8 @@
 
     <!-- ══════════════════ DASHBOARD ══════════════════ -->
     <div id="section-dashboard" class="section">
-      <div class="flex gap-1 mb-6 flex-wrap">
-        <button class="tab-btn tab-btn-todos active" onclick="switchDashTab('global')">Global</button>
-        <button class="tab-btn tab-btn-colorrectal" onclick="switchDashTab('colorrectal')">Colorrectal</button>
-        <button class="tab-btn tab-btn-proctologia" onclick="switchDashTab('proctologia')">Proctología</button>
-        <button class="tab-btn tab-btn-funcionales" onclick="switchDashTab('funcionales')">Funcionales</button>
-        <button class="tab-btn tab-btn-general" onclick="switchDashTab('general')">General</button>
-      </div>
+      <!-- Las pestañas salen del catálogo: los tipos se crean en Ajustes -->
+      <div id="dash-tabs" class="flex gap-1 mb-6 flex-wrap"></div>
 
       <!-- GLOBAL -->
       <div id="dash-global">
@@ -791,81 +780,31 @@
         </div>
       </div>
 
-      <!-- COLORRECTAL -->
-      <div id="dash-colorrectal" class="hidden">
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-5" id="dash-kpis-cr"></div>
-        <!-- Donuts row -->
+      <!-- PANEL POR TIPO (reutilizable para cualquiera de ellos) -->
+      <div id="dash-tipo" class="hidden">
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-5" id="dash-kpis-tp"></div>
+
         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-5">
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Sexo</h3><canvas id="cr-chart-sexo" height="160"></canvas></div>
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">ASA</h3><canvas id="cr-chart-asa" height="160"></canvas></div>
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Abordaje</h3><canvas id="cr-chart-abordaje" height="160"></canvas></div>
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Urgencia</h3><canvas id="cr-chart-urgencia" height="160"></canvas></div>
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Neoadyuvancia</h3><canvas id="cr-chart-neo" height="160"></canvas></div>
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Adyuvancia</h3><canvas id="cr-chart-ady" height="160"></canvas></div>
+          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Sexo</h3><canvas id="tp-chart-sexo" height="160"></canvas></div>
+          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">ASA</h3><canvas id="tp-chart-asa" height="160"></canvas></div>
+          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Abordaje</h3><canvas id="tp-chart-abordaje" height="160"></canvas></div>
+          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Urgencia</h3><canvas id="tp-chart-urgencia" height="160"></canvas></div>
+          <div class="card p-4 onco-only"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Neoadyuvancia</h3><canvas id="tp-chart-neo" height="160"></canvas></div>
+          <div class="card p-4 onco-only"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Adyuvancia</h3><canvas id="tp-chart-ady" height="160"></canvas></div>
         </div>
-        <!-- Barras row -->
+
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Estadio TNM</h3><canvas id="cr-chart-estadio" height="200"></canvas></div>
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Clavien-Dindo</h3><canvas id="cr-chart-clavien" height="200"></canvas></div>
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Casos por Cirujano</h3><canvas id="cr-chart-cirujano" height="220"></canvas></div>
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Diagnósticos</h3><canvas id="cr-chart-diag" height="220"></canvas></div>
-          <div class="card p-5 md:col-span-2"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Intervenciones</h3><canvas id="cr-chart-interv" height="160"></canvas></div>
+          <div class="card p-5 onco-only"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Estadio TNM</h3><canvas id="tp-chart-estadio" height="200"></canvas></div>
+          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Clavien-Dindo</h3><canvas id="tp-chart-clavien" height="200"></canvas></div>
+          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Casos por Cirujano</h3><canvas id="tp-chart-cirujano" height="220"></canvas></div>
+          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Diagnósticos</h3><canvas id="tp-chart-diag" height="220"></canvas></div>
+          <div class="card p-5 md:col-span-2"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Intervenciones</h3><canvas id="tp-chart-interv" height="160"></canvas></div>
+          <div class="card p-5 md:col-span-2"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Tipo Complicación</h3><canvas id="tp-chart-complic" height="140"></canvas></div>
         </div>
-        <!-- Recidiva -->
-        <div class="card p-5">
+
+        <div class="card p-5 onco-only">
           <h3 class="font-semibold text-gray-700 mb-3 text-sm">Curva de Recidiva Acumulada por Intervalos</h3>
-          <canvas id="cr-chart-recidiva" height="120"></canvas>
-        </div>
-      </div>
-
-      <!-- PROCTOLOGÍA -->
-      <div id="dash-proctologia" class="hidden">
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-5" id="dash-kpis-pr"></div>
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-5">
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Sexo</h3><canvas id="pr-chart-sexo" height="160"></canvas></div>
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">ASA</h3><canvas id="pr-chart-asa" height="160"></canvas></div>
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Urgencia</h3><canvas id="pr-chart-urgencia" height="160"></canvas></div>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Casos por Cirujano</h3><canvas id="pr-chart-cirujano" height="220"></canvas></div>
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Diagnósticos</h3><canvas id="pr-chart-diag" height="220"></canvas></div>
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Intervenciones</h3><canvas id="pr-chart-interv" height="220"></canvas></div>
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Clavien-Dindo</h3><canvas id="pr-chart-clavien" height="220"></canvas></div>
-          <div class="card p-5 md:col-span-2"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Tipo Complicación</h3><canvas id="pr-chart-complic" height="140"></canvas></div>
-        </div>
-      </div>
-
-      <!-- FUNCIONALES -->
-      <div id="dash-funcionales" class="hidden">
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-5" id="dash-kpis-fu"></div>
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-5">
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Sexo</h3><canvas id="fu-chart-sexo" height="160"></canvas></div>
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">ASA</h3><canvas id="fu-chart-asa" height="160"></canvas></div>
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Urgencia</h3><canvas id="fu-chart-urgencia" height="160"></canvas></div>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Casos por Cirujano</h3><canvas id="fu-chart-cirujano" height="220"></canvas></div>
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Diagnósticos</h3><canvas id="fu-chart-diag" height="220"></canvas></div>
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Intervenciones</h3><canvas id="fu-chart-interv" height="220"></canvas></div>
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Clavien-Dindo</h3><canvas id="fu-chart-clavien" height="220"></canvas></div>
-          <div class="card p-5 md:col-span-2"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Tipo Complicación</h3><canvas id="fu-chart-complic" height="140"></canvas></div>
-        </div>
-      </div>
-
-      <!-- GENERAL -->
-      <div id="dash-general" class="hidden">
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-5" id="dash-kpis-ge"></div>
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-5">
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Sexo</h3><canvas id="ge-chart-sexo" height="160"></canvas></div>
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">ASA</h3><canvas id="ge-chart-asa" height="160"></canvas></div>
-          <div class="card p-4"><h3 class="font-semibold text-gray-600 mb-2 text-xs uppercase tracking-wide">Urgencia</h3><canvas id="ge-chart-urgencia" height="160"></canvas></div>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Casos por Cirujano</h3><canvas id="ge-chart-cirujano" height="220"></canvas></div>
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Diagnósticos</h3><canvas id="ge-chart-diag" height="220"></canvas></div>
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Intervenciones</h3><canvas id="ge-chart-interv" height="220"></canvas></div>
-          <div class="card p-5"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Clavien-Dindo</h3><canvas id="ge-chart-clavien" height="220"></canvas></div>
-          <div class="card p-5 md:col-span-2"><h3 class="font-semibold text-gray-700 mb-3 text-sm">Tipo Complicación</h3><canvas id="ge-chart-complic" height="140"></canvas></div>
+          <canvas id="tp-chart-recidiva" height="120"></canvas>
         </div>
       </div>
     </div>
@@ -877,12 +816,9 @@
         <div class="space-y-4">
           <div>
             <label class="label">Tabla a exportar</label>
+            <!-- Los tipos se añaden desde el catálogo al iniciar sesión -->
             <select id="exp-tabla" class="input">
-              <option value="todas">Todas las tablas</option>
-              <option value="colorrectal">Cirugía Colorrectal</option>
-              <option value="proctologia">Proctología</option>
-              <option value="funcionales">Trastornos Funcionales</option>
-              <option value="general">Cirugía General</option>
+              <option value="todas">Todos los grupos</option>
             </select>
           </div>
           <div class="grid grid-cols-2 gap-4">
@@ -999,8 +935,9 @@
 
           <!-- Tipos -->
           <div class="border rounded-xl overflow-hidden">
-            <div class="px-4 py-2.5 bg-gray-50 border-b">
-              <h3 class="font-semibold text-sm text-gray-700">Tipo de cirugía</h3>
+            <div class="px-4 py-2.5 bg-gray-50 border-b flex justify-between items-center gap-2">
+              <h3 class="font-semibold text-sm text-gray-700">Grupo</h3>
+              <button onclick="nuevoTipo()" class="btn btn-ghost text-xs px-2 py-1 text-blue-600">+ Añadir</button>
             </div>
             <div id="aj-tipos" class="divide-y max-h-96 overflow-y-auto"></div>
           </div>

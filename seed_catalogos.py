@@ -11,23 +11,37 @@ from sqlalchemy.orm import Session
 from database import TipoCirugia, Diagnostico, Intervencion, Cirujano
 
 # ── Tipos de cirugía ─────────────────────────────────────────────────────────
+# Los mismos siete grupos que usa la aplicación de Lista de Espera, para que
+# el Excel de intervenidos se pueda importar sin traducir nada.
 TIPOS = [
     # slug, nombre, color, tiene_oncologico
-    ("colorrectal",  "Cirugía Colorrectal",     "#1565C0", True),
-    ("proctologia",  "Proctología",             "#2E7D32", False),
-    ("funcionales",  "Trastornos Funcionales",  "#6A1B9A", False),
-    ("general",      "Cirugía General",         "#E65100", False),
+    ("neoplasias",      "Neoplasias",       "#1565C0", True),
+    ("colon_benigno",   "Colon Benigno",    "#00838F", False),
+    ("eii",             "EII",              "#AD1457", False),
+    ("reconstrucciones", "Reconstrucciones", "#4E342E", False),
+    ("proctologia",     "Proctología",      "#2E7D32", False),
+    ("general",         "Cirugía General",  "#E65100", False),
+    ("neuromodulacion", "Neuromodulación",  "#6A1B9A", False),
 ]
 
 # ── Diagnósticos por tipo ────────────────────────────────────────────────────
 DIAGNOSTICOS = {
-    "colorrectal": [
+    "neoplasias": [
         "Neoplasia de Colon Derecho", "Neoplasia de Colon Transverso",
         "Neoplasia de Colon Izquierdo", "Neoplasia de Sigma",
         "Neoplasia de Recto", "Neoplasia de Ano",
-        "Neoplasia de Intestino Delgado", "Diverticulitis",
-        "Enfermedad Inflamatoria Intestinal", "Colitis Isquémica",
-        "Colostomía", "Ileostomía",
+        "Neoplasia de Intestino Delgado",
+    ],
+    "colon_benigno": [
+        "Diverticulitis", "Colitis Isquémica", "Pólipo Colónico",
+        "Obstrucción Intestinal",
+    ],
+    "eii": [
+        "Enfermedad Inflamatoria Intestinal", "Colitis Ulcerosa",
+        "Enfermedad de Crohn",
+    ],
+    "reconstrucciones": [
+        "Colostomía", "Ileostomía", "Hartmann Previo",
     ],
     "proctologia": [
         "Fístula Perianal", "Fístula Sacrococcígea", "Absceso Perianal",
@@ -35,15 +49,15 @@ DIAGNOSTICOS = {
         "Cuerpo Extraño Anorrectal", "Condilomas Anales",
         "Gangrena de Fournier",
     ],
-    "funcionales": ["Incontinencia Fecal", "Rectocele"],
+    "neuromodulacion": ["Incontinencia Fecal", "Rectocele"],
     "general": [
         "Hernia Inguinal", "Hernia Umbilical", "Eventración", "Colelitiasis",
-        "Colecistitis", "Obstrucción Intestinal",
-        "Perforación Gastroduodenal", "Apendicitis", "Hernia Paraostomal",
+        "Colecistitis", "Perforación Gastroduodenal", "Apendicitis",
+        "Hernia Paraostomal",
     ],
 }
 
-# Todas las patologías colorrectales comparten hoy el mismo repertorio
+# Las patologías de colon comparten repertorio de resecciones
 _RESECCIONES = [
     "Resección Intestino Delgado", "Resección Ileocecal",
     "Hemicolectomía Derecha", "Hemicolectomía Derecha Ampliada",
@@ -61,7 +75,10 @@ _FISTULA = [
 
 # ── Intervenciones por diagnóstico ───────────────────────────────────────────
 INTERVENCIONES = {
-    **{d: _RESECCIONES for d in DIAGNOSTICOS["colorrectal"]},
+    # Neoplasias, colon benigno, EII y reconstrucciones comparten resecciones
+    **{d: _RESECCIONES
+       for g in ("neoplasias", "colon_benigno", "eii", "reconstrucciones")
+       for d in DIAGNOSTICOS[g]},
     "Fístula Perianal": _FISTULA,
     "Crohn Perianal": _FISTULA,
     "Hemorroides": ["Milligan-Morgan", "Láser", "Desarterialización Doppler"],

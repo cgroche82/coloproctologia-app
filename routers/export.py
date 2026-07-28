@@ -9,19 +9,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from database import (
-    DB_PATH, get_db, recreate_engine,
-    CirugiaColorrectal, Proctologia, TrastornosFuncionales, CirugiaGeneral,
+    DB_PATH, get_db, recreate_engine, Registro, TipoCirugia,
 )
 from auth import get_current_user, get_admin_user, Usuario
 
 router = APIRouter(prefix="/api/export", tags=["export"])
-
-TABLES = {
-    "colorrectal": CirugiaColorrectal,
-    "proctologia": Proctologia,
-    "funcionales": TrastornosFuncionales,
-    "general": CirugiaGeneral,
-}
 
 # ── Explicit column order ────────────────────────────────────────────────────
 COMMON_COLS = [
@@ -64,21 +56,26 @@ COLORRECTAL_COLS = [
     'observaciones', 'created_by', 'created_at',
 ]
 
-COLS_MAP = {
-    "colorrectal": COLORRECTAL_COLS,
-    "proctologia": COMMON_COLS,
-    "funcionales": COMMON_COLS,
-    "general": COMMON_COLS,
-}
+def _columnas(tipo: TipoCirugia) -> list[str]:
+    """Los tipos con seguimiento oncológico llevan además el bloque TNM."""
+    return COLORRECTAL_COLS if tipo.tiene_oncologico else COMMON_COLS
 
 
-def _get_rows(db, Model, fecha_desde, fecha_hasta):
-    q = db.query(Model)
+def _tipos_a_exportar(db, tabla: str) -> list[TipoCirugia]:
+    """`tabla` es "todas" o el slug de un tipo."""
+    q = db.query(TipoCirugia).order_by(TipoCirugia.orden, TipoCirugia.id)
+    if tabla and tabla != "todas":
+        q = q.filter(TipoCirugia.slug == tabla)
+    return q.all()
+
+
+def _get_rows(db, tipo_id, fecha_desde, fecha_hasta):
+    q = db.query(Registro).filter(Registro.tipo_id == tipo_id)
     if fecha_desde:
-        q = q.filter(Model.fecha_intervencion >= fecha_desde)
+        q = q.filter(Registro.fecha_intervencion >= fecha_desde)
     if fecha_hasta:
-        q = q.filter(Model.fecha_intervencion <= fecha_hasta)
-    return q.order_by(Model.fecha_intervencion).all()
+        q = q.filter(Registro.fecha_intervencion <= fecha_hasta)
+    return q.order_by(Registro.fecha_intervencion).all()
 
 
 def _row_to_dict(obj, cols):
@@ -101,27 +98,24 @@ def export_csv(
     _: Usuario = Depends(get_current_user),
 ):
     output = io.StringIO()
-    models = list(TABLES.items()) if tabla == "todas" else (
-        [(tabla, TABLES[tabla])] if tabla in TABLES else []
-    )
+    tipos = _tipos_a_exportar(db, tabla)
+    todas = tabla == "todas"
 
     writer = None
-    for name, Model in models:
-        cols = COLS_MAP[name]
-        # For "todas" we use common cols to keep a single CSV
-        write_cols = COMMON_COLS if tabla == "todas" else cols
-        rows = _get_rows(db, Model, fecha_desde, fecha_hasta)
+    for tipo in tipos:
+        # Al exportar todo se usan las columnas comunes, para que salga un CSV único
+        write_cols = COMMON_COLS if todas else _columnas(tipo)
+        rows = _get_rows(db, tipo.id, fecha_desde, fecha_hasta)
         if not rows:
             continue
         if writer is None:
-            # Add tipo_cirugia column at the start when exporting all tables
-            fieldnames = (['tipo_cirugia'] + write_cols) if tabla == "todas" else write_cols
+            fieldnames = (['tipo_cirugia'] + write_cols) if todas else write_cols
             writer = csv.DictWriter(output, fieldnames=fieldnames)
             writer.writeheader()
         for r in rows:
             d = _row_to_dict(r, write_cols)
-            if tabla == "todas":
-                d = {'tipo_cirugia': name, **d}
+            if todas:
+                d = {'tipo_cirugia': tipo.nombre, **d}
             writer.writerow({k: d.get(k, '') for k in writer.fieldnames})
 
     output.seek(0)
@@ -148,22 +142,16 @@ def export_xlsx(
     wb = Workbook()
     wb.remove(wb.active)
 
-    HEADER_COLORS = {
-        "colorrectal": "FF1565C0",
-        "proctologia": "FF2E7D32",
-        "funcionales": "FF6A1B9A",
-        "general": "FFE65100",
-    }
-    SECTION_COLOR = "FFBBDEFB"   # light blue for oncological block header
-
-    models = list(TABLES.items()) if tabla == "todas" else (
-        [(tabla, TABLES[tabla])] if tabla in TABLES else []
-    )
-
-    for name, Model in models:
-        cols = COLS_MAP[name]
-        ws = wb.create_sheet(title=name.capitalize())
-        rows = _get_rows(db, Model, fecha_desde, fecha_hasta)
+    for tipo in _tipos_a_exportar(db, tabla):
+        cols = _columnas(tipo)
+        # El color de cabecera es el que el admin haya elegido para el tipo
+        color_hdr = "FF" + (tipo.color or "#0D2B4E").lstrip("#").upper()
+        # Excel limita los nombres de hoja a 31 caracteres y prohíbe : \ / ? * [ ]
+        titulo = tipo.nombre[:31]
+        for c in ':\\/?*[]':
+            titulo = titulo.replace(c, '-')
+        ws = wb.create_sheet(title=titulo)
+        rows = _get_rows(db, tipo.id, fecha_desde, fecha_hasta)
         if not rows:
             ws.append(["Sin datos para el período seleccionado"])
             continue
@@ -172,7 +160,7 @@ def export_xlsx(
 
         # Header row
         ws.append(cols)
-        hdr_fill = PatternFill("solid", fgColor=HEADER_COLORS.get(name, "FF0D2B4E"))
+        hdr_fill = PatternFill("solid", fgColor=color_hdr)
         hdr_font = Font(bold=True, color="FFFFFFFF", size=10)
         for ci, col_name in enumerate(cols, 1):
             cell = ws.cell(row=1, column=ci)
@@ -261,18 +249,8 @@ async def restore_backup(
 
 
 # ── IMPORT CSV ───────────────────────────────────────────────────────────────
-# Mapping from column name → model class (for auto-detection when tipo_cirugia missing)
-_COLORRECTAL_ONLY = {"t_tnm", "n_tnm", "m_tnm", "estadio_tnm", "neoadyuvancia", "estoma_proteccion"}
-
-MODEL_MAP = {
-    "colorrectal":  CirugiaColorrectal,
-    "proctologia":  Proctologia,
-    "funcionales":  TrastornosFuncionales,
-    "general":      CirugiaGeneral,
-}
-
-# Fields to skip when inserting (auto-set by DB)
-_SKIP = {"id", "created_at"}
+# Campos que no se copian: los asigna la base de datos
+_SKIP = {"id", "created_at", "tipo_id"}
 
 DATE_COLS = {
     "fecha_intervencion", "fecha_nacimiento", "fecha_alta", "fecha_exitus",
@@ -290,11 +268,15 @@ def _parse_date(val: str):
     return None
 
 
-def _detect_tipo(fieldnames: list[str]) -> str:
-    """Guess surgery type from CSV column names."""
-    if _COLORRECTAL_ONLY.intersection(fieldnames):
-        return "colorrectal"
-    return "general"  # safe fallback
+def _buscar_tipo(db: Session, valor: str):
+    """Acepta el slug o el nombre visible del tipo, sin distinguir mayúsculas."""
+    if not valor:
+        return None
+    v = valor.strip().lower()
+    for t in db.query(TipoCirugia).all():
+        if t.slug.lower() == v or t.nombre.lower() == v:
+            return t
+    return None
 
 
 @router.post("/import-csv")
@@ -311,51 +293,43 @@ async def import_csv(
         text = raw.decode("latin-1")
 
     reader = csv.DictReader(io.StringIO(text))
-    fieldnames = reader.fieldnames or []
+    columnas_validas = {c.key for c in Registro.__table__.columns}
 
     inserted = 0
     skipped = 0
     errors = []
 
-    # Group rows by tipo_cirugia
-    rows_by_tipo: dict[str, list[dict]] = {}
-    for row in reader:
-        tipo = row.get("tipo_cirugia", "").strip().lower()
-        if not tipo:
-            tipo = _detect_tipo(fieldnames)
-        if tipo not in MODEL_MAP:
-            skipped += 1
-            continue
-        rows_by_tipo.setdefault(tipo, []).append(row)
-
-    for tipo, rows in rows_by_tipo.items():
-        Model = MODEL_MAP[tipo]
-        # Get valid column names for this model
-        valid_cols = {c.key for c in Model.__table__.columns}
-
-        for i, row in enumerate(rows):
-            try:
-                kwargs: dict = {}
-                for col, val in row.items():
-                    col = col.strip()
-                    if col in _SKIP or col == "tipo_cirugia":
-                        continue
-                    if col not in valid_cols:
-                        continue
-                    if val == "" or val is None:
-                        kwargs[col] = None
-                    elif col in DATE_COLS:
-                        kwargs[col] = _parse_date(val)
-                    else:
-                        kwargs[col] = val
-                # Always stamp creator
-                kwargs["created_by"] = current_user.username
-                kwargs["created_at"] = datetime.utcnow()
-                db.add(Model(**kwargs))
-                inserted += 1
-            except Exception as e:
-                errors.append(f"Fila {i+1} ({tipo}): {e}")
+    for i, row in enumerate(reader, start=2):   # 2 = primera fila de datos
+        try:
+            tipo = _buscar_tipo(db, row.get("tipo_cirugia", ""))
+            if not tipo:
+                errors.append(
+                    f"Fila {i}: tipo de cirugía desconocido "
+                    f"('{row.get('tipo_cirugia', '')}')"
+                )
                 skipped += 1
+                continue
+
+            kwargs: dict = {}
+            for col, val in row.items():
+                col = (col or "").strip()
+                if col in _SKIP or col == "tipo_cirugia" or col not in columnas_validas:
+                    continue
+                if val == "" or val is None:
+                    kwargs[col] = None
+                elif col in DATE_COLS:
+                    kwargs[col] = _parse_date(val)
+                else:
+                    kwargs[col] = val
+
+            kwargs["tipo_id"] = tipo.id
+            kwargs["created_by"] = current_user.username
+            kwargs["created_at"] = datetime.utcnow()
+            db.add(Registro(**kwargs))
+            inserted += 1
+        except Exception as e:
+            errors.append(f"Fila {i}: {e}")
+            skipped += 1
 
     db.commit()
 

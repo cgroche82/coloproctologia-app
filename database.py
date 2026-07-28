@@ -62,6 +62,65 @@ class CommonFields:
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+# ── Campos oncológicos y de seguimiento ──────────────────────────────────────
+# Sólo se rellenan en los tipos marcados con tiene_oncologico. SQLite almacena
+# los nulos de forma muy compacta, así que tenerlos en la tabla única no
+# penaliza a los registros que no los usan.
+class CamposOncologicos:
+    estoma_proteccion = Column(String(5))
+    dehiscencia = Column(String(5))
+    tipo_dehiscencia = Column(String(5))
+    t_tnm = Column(String(10))
+    n_tnm = Column(String(10))
+    m_tnm = Column(String(10))
+    estadio_tnm = Column(String(10))
+    localizacion = Column(String(50))
+    distancia_margen_anal = Column(Float)
+    neoadyuvancia = Column(String(5))
+    tipo_neoadyuvancia = Column(String(50))
+    pcr = Column(String(5))
+    tipo_histologico = Column(String(50))
+    grado = Column(String(5))
+    margenes_libres = Column(String(5))
+    ganglios_analizados = Column(Integer)
+    ganglios_positivos = Column(Integer)
+    invasion_linfovascular = Column(String(5))
+    invasion_perineural = Column(String(5))
+    msi = Column(String(20))
+    adyuvancia = Column(String(5))
+    tipo_adyuvancia = Column(String(20))
+    recidiva_3m = Column(String(5))
+    tipo_recidiva_3m = Column(String(30))
+    recidiva_6m = Column(String(5))
+    tipo_recidiva_6m = Column(String(30))
+    recidiva_12m = Column(String(5))
+    tipo_recidiva_12m = Column(String(30))
+    recidiva_18m = Column(String(5))
+    tipo_recidiva_18m = Column(String(30))
+    recidiva_24m = Column(String(5))
+    tipo_recidiva_24m = Column(String(30))
+    recidiva_36m = Column(String(5))
+    tipo_recidiva_36m = Column(String(30))
+    recidiva_48m = Column(String(5))
+    tipo_recidiva_48m = Column(String(30))
+    recidiva_60m = Column(String(5))
+    tipo_recidiva_60m = Column(String(30))
+    fecha_exitus = Column(Date)
+
+
+class Registro(Base, CommonFields, CamposOncologicos):
+    """
+    Tabla única de intervenciones. Sustituye a las cuatro tablas separadas para
+    que los tipos de cirugía puedan crearse y editarse desde Ajustes sin tocar
+    el esquema.
+    """
+    __tablename__ = "registros"
+
+    tipo_id = Column(Integer, ForeignKey("tipos_cirugia.id"), nullable=False, index=True)
+    tipo = relationship("TipoCirugia")
+
+
+# ── Tablas antiguas (sólo para migrar; no se escriben ya) ────────────────────
 class CirugiaColorrectal(Base, CommonFields):
     __tablename__ = "cirugia_colorrectal"
 

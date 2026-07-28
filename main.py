@@ -37,8 +37,9 @@ class ResetPasswordRequest(BaseModel):
 
 # ── In-memory recovery codes: {code: (username, expires_timestamp)} ───────────
 _recovery_codes: dict[str, tuple[str, float]] = {}
-from routers import colorrectal, proctologia, funcionales, general, stats, export, catalogos
+from routers import registros, stats, export, catalogos
 from seed_catalogos import seed_catalogos
+from migracion_tabla_unica import migrar as migrar_tabla_unica
 
 app = FastAPI(title="Registro Quirúrgico Coloproctología", version="1.0.0")
 
@@ -52,10 +53,7 @@ app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), na
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 # Include routers
-app.include_router(colorrectal.router)
-app.include_router(proctologia.router)
-app.include_router(funcionales.router)
-app.include_router(general.router)
+app.include_router(registros.router)
 app.include_router(stats.router)
 app.include_router(export.router)
 app.include_router(catalogos.router)
@@ -69,6 +67,10 @@ def startup():
         init_admin_user(db)
         # Sólo siembra lo que falte: no pisa lo editado desde Ajustes
         seed_catalogos(db)
+        # Traspaso de las 4 tablas antiguas a `registros`; no hace nada si ya está hecho
+        movidos = migrar_tabla_unica(db)
+        if movidos:
+            print(f"[MIGRACIÓN] Registros trasladados a tabla única: {movidos}", flush=True)
     finally:
         db.close()
 
@@ -133,26 +135,26 @@ def toggle_user(uid: int, db: Session = Depends(get_db), _: Usuario = Depends(ge
 # Search across all tables
 @app.get("/api/search")
 def search_all(nhc: str, db: Session = Depends(get_db), _: Usuario = Depends(get_current_user)):
-    from database import CirugiaColorrectal, Proctologia, TrastornosFuncionales, CirugiaGeneral
-    results = []
-    for Model, tipo in [
-        (CirugiaColorrectal, "colorrectal"),
-        (Proctologia, "proctologia"),
-        (TrastornosFuncionales, "funcionales"),
-        (CirugiaGeneral, "general"),
-    ]:
-        rows = db.query(Model).filter(Model.nhc.ilike(f"%{nhc}%")).limit(10).all()
-        for r in rows:
-            results.append({
-                "tipo": tipo,
-                "id": r.id,
-                "nhc": r.nhc,
-                "fecha_intervencion": r.fecha_intervencion.isoformat() if r.fecha_intervencion else None,
-                "diagnostico": r.diagnostico,
-                "intervencion": r.intervencion,
-                "cirujano": r.cirujano,
-            })
-    return results
+    from database import Registro, TipoCirugia
+
+    tipos = {t.id: t for t in db.query(TipoCirugia).all()}
+    rows = (db.query(Registro)
+              .filter(Registro.nhc.ilike(f"%{nhc}%"))
+              .order_by(Registro.fecha_intervencion.desc())
+              .limit(40).all())
+    return [
+        {
+            "tipo": tipos[r.tipo_id].slug if r.tipo_id in tipos else None,
+            "tipo_nombre": tipos[r.tipo_id].nombre if r.tipo_id in tipos else None,
+            "id": r.id,
+            "nhc": r.nhc,
+            "fecha_intervencion": r.fecha_intervencion.isoformat() if r.fecha_intervencion else None,
+            "diagnostico": r.diagnostico,
+            "intervencion": r.intervencion,
+            "cirujano": r.cirujano,
+        }
+        for r in rows
+    ]
 
 
 # ── Change own password ──────────────────────────────────────────────────────

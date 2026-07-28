@@ -121,6 +121,26 @@ class GeneralOut(GeneralCreate):
         from_attributes = True
 
 
+# ── Tabla única ──────────────────────────────────────────────────────────────
+# ColorrectalCreate ya reúne los campos comunes y los oncológicos, así que
+# sirve de base: en la tabla única cualquier tipo puede llevarlos.
+class RegistroCreate(ColorrectalCreate):
+    tipo_id: int
+
+
+class RegistroOut(RegistroCreate):
+    id: int
+    created_by: Optional[str] = None
+    created_at: Optional[datetime] = None
+    # Se rellenan al serializar para que el frontend no tenga que cruzar tablas
+    tipo_slug: Optional[str] = None
+    tipo_nombre: Optional[str] = None
+    tipo_color: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class UsuarioCreate(BaseModel):
     username: str
     password: str

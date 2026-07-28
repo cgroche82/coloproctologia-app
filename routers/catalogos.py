@@ -9,12 +9,15 @@ registros guardan estos valores como texto, así que desactivar un diagnóstico
 lo retira de los desplegables sin tocar los casos ya grabados.
 """
 
+import re
+import unicodedata
 from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from database import get_db, TipoCirugia, Diagnostico, Intervencion, Cirujano
+from database import get_db, Registro, TipoCirugia, Diagnostico, Intervencion, Cirujano
 from auth import get_current_user, get_admin_user, Usuario
 
 router = APIRouter(prefix="/api/catalogos", tags=["catalogos"])
@@ -165,8 +168,69 @@ def toggle_cirujano(
 
 
 # ── Tipos de cirugía ─────────────────────────────────────────────────────────
-# En la Fase 1 los 4 tipos originales van ligados a una tabla del esquema, así
-# que sólo se permite renombrarlos y cambiar color/oncológico, no eliminarlos.
+# Con la tabla única el tipo es un dato más, así que ya pueden crearse desde
+# aquí: cada uno trae su exportación y sus estadísticas sin tocar el código.
+def _slug(nombre: str) -> str:
+    base = unicodedata.normalize("NFKD", nombre).encode("ascii", "ignore").decode()
+    base = re.sub(r"[^a-zA-Z0-9]+", "_", base).strip("_").lower()
+    return base or "tipo"
+
+
+@router.post("/tipos")
+def crear_tipo(
+    data: TipoIn,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_admin_user),
+):
+    nombre = data.nombre.strip()
+    if not nombre:
+        raise HTTPException(400, "El nombre no puede estar vacío")
+    if db.query(TipoCirugia).filter(TipoCirugia.nombre == nombre).first():
+        raise HTTPException(400, "Ya existe un tipo con ese nombre")
+
+    # El slug debe ser único: se numera si hiciera falta
+    base = _slug(nombre)
+    slug, n = base, 2
+    while db.query(TipoCirugia).filter(TipoCirugia.slug == slug).first():
+        slug, n = f"{base}_{n}", n + 1
+
+    ultimo = db.query(TipoCirugia).order_by(TipoCirugia.orden.desc()).first()
+    t = TipoCirugia(
+        slug=slug, nombre=nombre, color=data.color or "#1565C0",
+        tiene_oncologico=data.tiene_oncologico,
+        orden=(ultimo.orden + 1) if ultimo else 0, activo=True,
+    )
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    return {"id": t.id, "slug": t.slug, "nombre": t.nombre,
+            "color": t.color, "tiene_oncologico": t.tiene_oncologico}
+
+
+@router.patch("/tipos/{tid}/toggle")
+def toggle_tipo(
+    tid: int,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_admin_user),
+):
+    t = db.query(TipoCirugia).filter(TipoCirugia.id == tid).first()
+    if not t:
+        raise HTTPException(404, "No encontrado")
+    # Desactivar un tipo con casos los dejaría fuera de los filtros por grupo,
+    # así que se avisa con el recuento en vez de impedirlo sin explicación
+    if t.activo:
+        n = db.query(Registro).filter(Registro.tipo_id == tid).count()
+        if n:
+            raise HTTPException(
+                400,
+                f"«{t.nombre}» tiene {n} registro(s). Reasígnalos a otro grupo "
+                f"antes de desactivarlo para que no queden descolgados."
+            )
+    t.activo = not t.activo
+    db.commit()
+    return {"id": t.id, "activo": t.activo}
+
+
 @router.patch("/tipos/{tid}")
 def editar_tipo(
     tid: int,

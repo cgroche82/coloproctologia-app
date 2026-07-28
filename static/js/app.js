@@ -43,10 +43,45 @@ async function loadCatalogo() {
   try {
     CATALOGO = await api('GET', '/api/catalogos/arbol') || [];
     CIRUJANOS = await api('GET', '/api/catalogos/cirujanos') || [];
+    poblarSelectTipo();
+    poblarSelectExport();
     poblarSelectsCirujano();
   } catch (e) {
     showToast('No se pudo cargar el catálogo: ' + e.message, 'error');
   }
+}
+
+/** El desplegable de tipo se construye del catálogo: los tipos son editables. */
+function poblarSelectTipo() {
+  const sel = document.getElementById('f-tipo-cirugia');
+  if (!sel) return;
+  const actual = sel.value;
+  sel.innerHTML = '<option value="">— Seleccionar —</option>';
+  CATALOGO.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t.slug; o.textContent = t.nombre;
+    sel.appendChild(o);
+  });
+  if (actual) sel.value = actual;
+}
+
+/** El backend identifica el tipo por id; el formulario trabaja con el slug. */
+function tipoIdDe(slug) {
+  return tipoPorSlug(slug)?.id ?? null;
+}
+
+/** El desplegable de exportación también sale del catálogo. */
+function poblarSelectExport() {
+  const sel = document.getElementById('exp-tabla');
+  if (!sel) return;
+  const actual = sel.value;
+  sel.innerHTML = '<option value="todas">Todos los grupos</option>';
+  CATALOGO.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t.slug; o.textContent = t.nombre;
+    sel.appendChild(o);
+  });
+  if (actual) sel.value = actual;
 }
 
 function poblarSelectsCirujano() {
@@ -190,18 +225,16 @@ function showSection(name) {
   document.querySelector(`[data-section="${name}"]`)?.classList.add('active');
   document.getElementById('page-title').textContent = TITLES[name] || name;
 
-  if (name === 'database') { dbCurrentPage = 1; loadDbTable(); }
-  if (name === 'dashboard') { loadDashboard('global'); }
+  if (name === 'database') { dbCurrentPage = 1; construirDbTabs(); loadDbTable(); }
+  if (name === 'dashboard') { dashCurrentTab = 'global'; switchDashTab('global'); }
   if (name === 'ajustes') loadAjustes();
   if (name === 'admin') loadAdminUsers();
 }
 
 // ── WIZARD logic ─────────────────────────────────────────────
 async function loadNextId() {
-  const tipo = document.getElementById('f-tipo-cirugia').value || 'colorrectal';
-  const endpoint = { colorrectal: '/api/colorrectal', proctologia: '/api/proctologia', funcionales: '/api/funcionales', general: '/api/general' }[tipo] || '/api/colorrectal';
   try {
-    const data = await api('GET', `${endpoint}/next-id`);
+    const data = await api('GET', '/api/registros/next-id');
     if (data && !editMode) document.getElementById('f-id').value = data.next_id;
   } catch {}
 }
@@ -448,7 +481,11 @@ function collectFormData() {
   };
 
   const tipo = g('f-tipo-cirugia');
-  if (tipo === 'colorrectal') {
+  data.tipo_id = tipoIdDe(tipo);
+
+  // El bloque oncológico se envía en los tipos marcados como tales en Ajustes,
+  // ya no sólo en el colorrectal
+  if (tipoPorSlug(tipo)?.tiene_oncologico) {
     Object.assign(data, {
       estoma_proteccion: g('f-estoma-proteccion') || null,
       dehiscencia: g('f-dehiscencia') || null,
@@ -510,15 +547,14 @@ function populateForm(tipo, record) {
   s('f-estancia', record.estancia); s('f-reingreso-30d', record.reingreso_30d);
   s('f-observaciones', record.observaciones);
 
-  const tipoMap = { colorrectal: 'colorrectal', proctologia: 'proctologia', funcionales: 'funcionales', general: 'general' };
-  s('f-tipo-cirugia', tipoMap[tipo] || tipo);
+  s('f-tipo-cirugia', tipo);
   onTipoCirugia();
   s('f-diagnostico', record.diagnostico);
   onDiagnostico();
   s('f-intervencion', record.intervencion);
   onAbordaje();
 
-  if (tipo === 'colorrectal') {
+  if (tipoPorSlug(tipo)?.tiene_oncologico) {
     s('f-estoma-proteccion', record.estoma_proteccion);
     s('f-dehiscencia', record.dehiscencia); onDehiscencia();
     s('f-tipo-dehiscencia', record.tipo_dehiscencia);
@@ -550,15 +586,14 @@ function populateForm(tipo, record) {
 // ── Save / Edit ──────────────────────────────────────────────
 async function saveRecord() {
   if (!validateStep(currentStep)) return;
-  const { tipo, data } = collectFormData();
-  const endpoint = { colorrectal: '/api/colorrectal', proctologia: '/api/proctologia', funcionales: '/api/funcionales', general: '/api/general' }[tipo];
-  if (!endpoint) { showToast('Selecciona un tipo de cirugía', 'error'); return; }
+  const { data } = collectFormData();
+  if (!data.tipo_id) { showToast('Selecciona un tipo de cirugía', 'error'); return; }
   try {
     if (editMode && editId) {
-      await api('PUT', `${endpoint}/${editId}`, data);
+      await api('PUT', `/api/registros/${editId}`, data);
       showToast('Registro actualizado correctamente');
     } else {
-      await api('POST', endpoint, data);
+      await api('POST', '/api/registros', data);
       showToast('Registro guardado correctamente');
     }
     clearForm();
@@ -598,13 +633,6 @@ function buildFiltersQuery() {
   return p.toString();
 }
 
-const TYPE_COLORS = {
-  colorrectal: 'bg-blue-100 text-blue-800',
-  proctologia: 'bg-green-100 text-green-800',
-  funcionales: 'bg-purple-100 text-purple-800',
-  general: 'bg-orange-100 text-orange-800',
-};
-const TYPE_LABELS = { colorrectal: 'Colorrectal', proctologia: 'Proctología', funcionales: 'Funcionales', general: 'General' };
 
 async function loadDbTable() {
   const tbody = document.getElementById('db-table-body');
@@ -612,26 +640,16 @@ async function loadDbTable() {
   const q = buildFiltersQuery();
 
   try {
-    let rows = [], total = 0;
-    if (dbCurrentTab === 'todos') {
-      const results = await Promise.all([
-        api('GET', `/api/colorrectal?${q}`),
-        api('GET', `/api/proctologia?${q}`),
-        api('GET', `/api/funcionales?${q}`),
-        api('GET', `/api/general?${q}`),
-      ]);
-      const types = ['colorrectal','proctologia','funcionales','general'];
-      results.forEach((r, i) => {
-        if (r?.items) r.items.forEach(item => rows.push({ ...item, _tipo: types[i] }));
-        total += r?.total || 0;
-      });
-      rows.sort((a, b) => new Date(b.fecha_intervencion) - new Date(a.fecha_intervencion));
-      rows = rows.slice(0, 20);
-    } else {
-      const r = await api('GET', `/api/${dbCurrentTab}?${q}`);
-      rows = (r?.items || []).map(item => ({ ...item, _tipo: dbCurrentTab }));
-      total = r?.total || 0;
+    // Una sola consulta: el tipo es ahora un filtro, no una tabla distinta.
+    // Esto arregla de paso la paginación, que antes mezclaba cuatro páginas.
+    let url = `/api/registros?${q}`;
+    if (dbCurrentTab !== 'todos') {
+      const id = tipoIdDe(dbCurrentTab);
+      if (id) url += `&tipo_id=${id}`;
     }
+    const r = await api('GET', url);
+    const rows = r?.items || [];
+    const total = r?.total || 0;
 
     tbody.innerHTML = '';
     if (!rows.length) {
@@ -639,12 +657,13 @@ async function loadDbTable() {
     } else {
       rows.forEach(row => {
         const tr = document.createElement('tr');
-        const tipo = row._tipo;
+        // El color de la etiqueta viene del propio tipo, definido en Ajustes
+        const badge = `<span class="badge" style="background:${row.tipo_color || '#666'}20;color:${row.tipo_color || '#666'}">${row.tipo_nombre || '—'}</span>`;
         tr.innerHTML = `
           <td class="font-mono text-xs text-gray-500">${row.id}</td>
           <td class="font-medium">${row.nhc || '—'}</td>
           <td>${row.fecha_intervencion || '—'}</td>
-          <td><span class="badge ${TYPE_COLORS[tipo]}">${TYPE_LABELS[tipo]}</span></td>
+          <td>${badge}</td>
           <td class="max-w-xs truncate text-sm" title="${row.diagnostico||''}">${row.diagnostico || '—'}</td>
           <td class="max-w-xs truncate text-sm" title="${row.intervencion||''}">${row.intervencion || '—'}</td>
           <td class="text-sm">${row.cirujano || '—'}</td>
@@ -653,13 +672,13 @@ async function loadDbTable() {
           <td>${row.clavien_dindo || '—'}</td>
           <td>
             <div class="flex gap-1">
-              <button onclick='viewDetail("${tipo}",${row.id})' class="btn btn-ghost p-1.5 text-blue-600 hover:bg-blue-50" title="Ver">
+              <button onclick='viewDetail(${row.id})' class="btn btn-ghost p-1.5 text-blue-600 hover:bg-blue-50" title="Ver">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
               </button>
-              <button onclick='editRecord("${tipo}",${row.id})' class="btn btn-ghost p-1.5 text-green-600 hover:bg-green-50" title="Editar">
+              <button onclick='editRecord(${row.id})' class="btn btn-ghost p-1.5 text-green-600 hover:bg-green-50" title="Editar">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
               </button>
-              <button onclick='deleteRecord("${tipo}",${row.id})' class="btn btn-ghost p-1.5 text-red-600 hover:bg-red-50" title="Eliminar">
+              <button onclick='deleteRecord(${row.id})' class="btn btn-ghost p-1.5 text-red-600 hover:bg-red-50" title="Eliminar">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
               </button>
             </div>
@@ -677,11 +696,27 @@ async function loadDbTable() {
   }
 }
 
+/** Genera las pestañas de la base de datos a partir del catálogo. */
+function construirDbTabs() {
+  const cont = document.getElementById('db-tabs');
+  if (!cont) return;
+  cont.innerHTML = '';
+  const tabs = [{ slug: 'todos', nombre: 'Todos', color: '#0D2B4E' }, ...CATALOGO];
+  tabs.forEach(t => {
+    const b = document.createElement('button');
+    b.className = 'tab-btn' + (t.slug === dbCurrentTab ? ' active' : '');
+    b.textContent = t.nombre;
+    b.dataset.slug = t.slug;
+    if (t.slug === dbCurrentTab) b.style.background = t.color;
+    b.onclick = () => switchDbTab(t.slug);
+    cont.appendChild(b);
+  });
+}
+
 function switchDbTab(tab) {
   dbCurrentTab = tab;
   dbCurrentPage = 1;
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelector(`.tab-btn-${tab === 'todos' ? 'todos' : tab}`)?.classList.add('active');
+  construirDbTabs();
   loadDbTable();
 }
 
@@ -712,24 +747,24 @@ async function searchAllNHC() {
       return;
     }
     res.forEach(row => {
-      const tipo = row.tipo;
+      const color = tipoPorSlug(row.tipo)?.color || '#666';
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td class="font-mono text-xs text-gray-500">${row.id}</td>
         <td class="font-medium">${row.nhc}</td>
         <td>${row.fecha_intervencion||'—'}</td>
-        <td><span class="badge ${TYPE_COLORS[tipo]}">${TYPE_LABELS[tipo]}</span></td>
+        <td><span class="badge" style="background:${color}20;color:${color}">${row.tipo_nombre||'—'}</span></td>
         <td colspan="3" class="text-sm">${row.diagnostico||'—'} / ${row.intervencion||'—'}</td>
         <td colspan="3" class="text-sm">${row.cirujano||'—'}</td>
         <td>
           <div class="flex gap-1">
-            <button onclick='viewDetail("${tipo}",${row.id})' class="btn btn-ghost p-1.5 text-blue-600">
+            <button onclick='viewDetail(${row.id})' class="btn btn-ghost p-1.5 text-blue-600">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
             </button>
-            <button onclick='editRecord("${tipo}",${row.id})' class="btn btn-ghost p-1.5 text-green-600">
+            <button onclick='editRecord(${row.id})' class="btn btn-ghost p-1.5 text-green-600">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
             </button>
-            <button onclick='deleteRecord("${tipo}",${row.id})' class="btn btn-ghost p-1.5 text-red-600">
+            <button onclick='deleteRecord(${row.id})' class="btn btn-ghost p-1.5 text-red-600">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
             </button>
           </div>
@@ -742,39 +777,41 @@ async function searchAllNHC() {
 }
 
 // ── View detail ──────────────────────────────────────────────
-async function viewDetail(tipo, id) {
+async function viewDetail(id) {
   try {
-    const record = await api('GET', `/api/${tipo}/${id}`);
+    const record = await api('GET', `/api/registros/${id}`);
     const modal = document.getElementById('detail-modal');
     const content = document.getElementById('detail-content');
+    const color = record.tipo_color || '#666';
     const rows = Object.entries(record)
-      .filter(([k]) => !['created_at','created_by'].includes(k))
+      .filter(([k]) => !['created_at','created_by','tipo_id','tipo_slug','tipo_nombre','tipo_color'].includes(k))
       .map(([k, v]) => `<tr><td class="py-1.5 pr-4 font-medium text-gray-500 text-sm whitespace-nowrap">${k.replace(/_/g,' ')}</td><td class="py-1.5 text-sm text-gray-900">${v ?? '—'}</td></tr>`)
       .join('');
-    content.innerHTML = `<div class="mb-3"><span class="badge ${TYPE_COLORS[tipo]} text-sm">${TYPE_LABELS[tipo]}</span></div><table>${rows}</table>`;
+    content.innerHTML = `<div class="mb-3"><span class="badge text-sm" style="background:${color}20;color:${color}">${record.tipo_nombre || '—'}</span></div><table>${rows}</table>`;
     modal.classList.add('open');
   } catch (e) { showToast(e.message, 'error'); }
 }
 
 // ── Edit record ──────────────────────────────────────────────
-async function editRecord(tipo, id) {
+async function editRecord(id) {
   try {
-    const record = await api('GET', `/api/${tipo}/${id}`);
-    clearForm();                              // resets editMode → false primero
-    editMode = true; editId = id; editTipo = tipo;  // luego fijamos modo edición
+    const record = await api('GET', `/api/registros/${id}`);
+    clearForm();                                    // resetea editMode a false primero
+    editMode = true; editId = id;                   // luego fijamos modo edición
+    editTipo = record.tipo_slug;
     goToStep(1);
     showSection('formulario');
     document.getElementById('f-id').value = id;
-    populateForm(tipo, record);
+    populateForm(record.tipo_slug, record);
     showToast('Editando registro — guarda para confirmar', 'warn');
   } catch (e) { showToast(e.message, 'error'); }
 }
 
 // ── Delete record ────────────────────────────────────────────
-async function deleteRecord(tipo, id) {
-  if (!confirm(`¿Eliminar el registro ${id} de ${TYPE_LABELS[tipo]}? Esta acción no se puede deshacer.`)) return;
+async function deleteRecord(id) {
+  if (!confirm(`¿Eliminar el registro ${id}? Esta acción no se puede deshacer.`)) return;
   try {
-    await api('DELETE', `/api/${tipo}/${id}`);
+    await api('DELETE', `/api/registros/${id}`);
     showToast('Registro eliminado');
     loadDbTable();
   } catch (e) { showToast(e.message, 'error'); }
@@ -786,14 +823,28 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 // ── Dashboard ────────────────────────────────────────────────
 let dashCurrentTab = 'global';
 
+/** Pestañas del dashboard, también generadas desde el catálogo. */
+function construirDashTabs() {
+  const cont = document.getElementById('dash-tabs');
+  if (!cont) return;
+  cont.innerHTML = '';
+  const tabs = [{ slug: 'global', nombre: 'Global', color: '#0D2B4E' }, ...CATALOGO];
+  tabs.forEach(t => {
+    const b = document.createElement('button');
+    b.className = 'tab-btn' + (t.slug === dashCurrentTab ? ' active' : '');
+    b.textContent = t.nombre;
+    if (t.slug === dashCurrentTab) b.style.background = t.color;
+    b.onclick = () => switchDashTab(t.slug);
+    cont.appendChild(b);
+  });
+}
+
 function switchDashTab(tab) {
   dashCurrentTab = tab;
-  ['global','colorrectal','proctologia','funcionales','general'].forEach(t => {
-    document.getElementById(`dash-${t}`)?.classList.toggle('hidden', t !== tab);
-  });
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  const map = { global: 'todos', colorrectal: 'colorrectal', proctologia: 'proctologia', funcionales: 'funcionales', general: 'general' };
-  document.querySelector(`.tab-btn-${map[tab]}`)?.classList.add('active');
+  // Un único panel sirve para todos los tipos; sólo alterna con el global
+  document.getElementById('dash-global')?.classList.toggle('hidden', tab !== 'global');
+  document.getElementById('dash-tipo')?.classList.toggle('hidden', tab === 'global');
+  construirDashTabs();
   loadDashboard(tab);
 }
 
@@ -849,93 +900,88 @@ function mkClavienBar(id, obj, color) {
 
 async function loadDashboard(tab) {
   try {
-    // ── GLOBAL ──────────────────────────────────────────────
-    if (tab === 'global') {
-      const d = await api('GET', '/api/stats/global');
-      if (!d) return;
-      document.getElementById('dash-kpis').innerHTML = `
-        ${kpiCard('Total Casos', d.total, '#0D2B4E', `CR:${d.colorrectal} Pr:${d.proctologia} Fu:${d.funcionales} Ge:${d.general}`)}
-        ${kpiCard('Edad Media', d.edad_media + ' a', '#1565C0', `Estancia: ${d.estancia_media} d`)}
-        ${kpiCard('Laparoscopia', d.pct_laparoscopia + '%', '#2E7D32', `Conversión: ${d.pct_conversion}%`)}
-        ${kpiCard('Clavien ≥ II', d.pct_clavien_ge2 + '%', '#6A1B9A', `Reintervención: ${d.pct_reintervencion}%`)}
-        ${kpiCard('Mortalidad 30d', d.pct_mortalidad + '%', '#C62828', `Reingreso: ${d.pct_reingreso_30d}%`)}
-      `;
-      mkDonut('chart-tipo',
-        { Colorrectal: d.colorrectal, Proctología: d.proctologia, Funcionales: d.funcionales, General: d.general },
-        ['#1565C0','#2E7D32','#6A1B9A','#E65100']
-      );
-      mkDonut('chart-abordaje', d.abordaje || {});
-      mkBarH('chart-cirujano', d.por_cirujano || {}, '#1565C0');
-      const monthly = d.monthly || [];
-      mkChart('chart-mensual', 'line',
-        monthly.map(m => m.mes),
-        [{ label: 'Casos', data: monthly.map(m => m.n), borderColor: '#1565C0', backgroundColor: 'rgba(21,101,192,.12)', fill: true, tension: 0.4 }],
-        { responsive: true, plugins: { legend: { display: false } } }
-      );
-
-    // ── COLORRECTAL ─────────────────────────────────────────
-    } else if (tab === 'colorrectal') {
-      const d = await api('GET', '/api/stats/colorrectal');
-      if (!d) return;
-      document.getElementById('dash-kpis-cr').innerHTML = `
-        ${kpiCard('Total', d.total, '#1565C0', `Edad: ${d.edad_media} a`)}
-        ${kpiCard('TQ Medio', d.tq_medio + ' min', '#1565C0', `Estancia: ${d.estancia_media} d`)}
-        ${kpiCard('Conversión', d.pct_conversion + '%', '#1565C0', `Estoma prot.: ${d.pct_estoma_proteccion}%`)}
-        ${kpiCard('Dehiscencia', d.pct_dehiscencia + '%', '#C62828', `Reintervención: ${d.pct_reintervencion}%`)}
-        ${kpiCard('Neoadyuvancia', d.pct_neoadyuvancia + '%', '#2E7D32', `pCR: ${d.pct_pcr}%`)}
-        ${kpiCard('Adyuvancia', d.pct_adyuvancia + '%', '#2E7D32', `Márgenes libres: ${d.pct_margenes_libres}%`)}
-        ${kpiCard('Mortalidad 30d', d.pct_mortalidad + '%', '#C62828', `Reingreso: ${d.pct_reingreso_30d}%`)}
-        ${kpiCard('Ganglios med.', d.ganglios_media, '#6A1B9A', `Clavien ≥ II: ${d.pct_clavien_ge2}%`)}
-      `;
-      // Donuts
-      mkDonut('cr-chart-sexo', d.por_sexo, ['#1565C0','#E91E63']);
-      mkDonut('cr-chart-asa', d.por_asa, ['#43A047','#FDD835','#FB8C00','#E53935','#7B1FA2']);
-      mkDonut('cr-chart-abordaje', d.por_abordaje);
-      mkDonut('cr-chart-urgencia', d.por_urgencia, ['#2E7D32','#C62828']);
-      mkDonut('cr-chart-neo', d.por_neoadyuvancia, ['#C62828','#E0E0E0']);
-      mkDonut('cr-chart-ady', d.por_adyuvancia, ['#1565C0','#E0E0E0']);
-      // Barras
-      const estKeys = ['0','I','IIA','IIB','IIC','IIIA','IIIB','IIIC','IVA','IVB','IVC'];
-      mkBarV('cr-chart-estadio', estKeys, estKeys.map(k => (d.estadios||{})[k]||0), '#1565C0');
-      mkClavienBar('cr-chart-clavien', d.por_clavien || {}, '#6A1B9A');
-      mkBarH('cr-chart-cirujano', d.por_cirujano || {}, '#1565C0');
-      mkBarH('cr-chart-diag', d.por_diagnostico || {}, '#1565C0');
-      mkBarH('cr-chart-interv', d.por_intervencion || {}, '#42A5F5');
-      // Recidiva
-      const ri = d.recidiva_intervalos || {};
-      mkChart('cr-chart-recidiva', 'line',
-        INTERVALOS.map(m => `${m}m`),
-        [{ label: 'Casos con recidiva', data: INTERVALOS.map(m => ri[`${m}m`]||0), borderColor: '#C62828', backgroundColor: 'rgba(198,40,40,.1)', fill: true, tension: 0.4, pointRadius: 5 }],
-        { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
-      );
-
-    // ── PROCTOLOGÍA / FUNCIONALES / GENERAL ─────────────────
-    } else {
-      const colorMap = { proctologia: '#2E7D32', funcionales: '#6A1B9A', general: '#E65100' };
-      const kpiIdMap = { proctologia: 'dash-kpis-pr', funcionales: 'dash-kpis-fu', general: 'dash-kpis-ge' };
-      const pfx = tab.substring(0,2);  // pr, fu, ge
-      const color = colorMap[tab];
-      const d = await api('GET', `/api/stats/${tab}`);
-      if (!d) return;
-      document.getElementById(kpiIdMap[tab]).innerHTML = `
-        ${kpiCard('Total', d.total, color, `Edad: ${d.edad_media} a`)}
-        ${kpiCard('Estancia Media', d.estancia_media + ' d', color, `TQ: ${d.tq_medio} min`)}
-        ${kpiCard('Reintervención', d.pct_reintervencion + '%', color, `Clavien ≥ II: ${d.pct_clavien_ge2}%`)}
-        ${kpiCard('Mortalidad 30d', d.pct_mortalidad + '%', '#C62828', `Reingreso: ${d.pct_reingreso_30d}%`)}
-        ${kpiCard('Laparoscopia', d.pct_laparoscopia + '%', color, `Conversión: ${d.pct_conversion}%`)}
-      `;
-      // Donuts
-      mkDonut(`${pfx}-chart-sexo`, d.por_sexo, ['#1565C0','#E91E63']);
-      mkDonut(`${pfx}-chart-asa`, d.por_asa, ['#43A047','#FDD835','#FB8C00','#E53935','#7B1FA2']);
-      mkDonut(`${pfx}-chart-urgencia`, d.por_urgencia, ['#2E7D32','#C62828']);
-      // Barras
-      mkBarH(`${pfx}-chart-cirujano`, d.por_cirujano || {}, color);
-      mkBarH(`${pfx}-chart-diag`, d.por_diagnostico || {}, color);
-      mkBarH(`${pfx}-chart-interv`, d.por_intervencion || {}, color);
-      mkClavienBar(`${pfx}-chart-clavien`, d.por_clavien || {}, '#6A1B9A');
-      mkBarH(`${pfx}-chart-complic`, d.por_tipo_complicacion || {}, '#FB8C00');
-    }
+    if (tab === 'global') return await loadDashboardGlobal();
+    const tipo = tipoPorSlug(tab);
+    if (tipo) await loadDashboardTipo(tipo);
   } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function loadDashboardGlobal() {
+  const d = await api('GET', '/api/stats/global');
+  if (!d) return;
+  const porTipo = d.por_tipo || [];
+  const resumen = porTipo.filter(t => t.n).map(t => `${t.nombre}: ${t.n}`).join(' · ') || 'sin casos';
+
+  document.getElementById('dash-kpis').innerHTML = `
+    ${kpiCard('Total Casos', d.total, '#0D2B4E', resumen)}
+    ${kpiCard('Edad Media', d.edad_media + ' a', '#1565C0', `Estancia: ${d.estancia_media} d`)}
+    ${kpiCard('Laparoscopia', d.pct_laparoscopia + '%', '#2E7D32', `Conversión: ${d.pct_conversion}%`)}
+    ${kpiCard('Clavien ≥ II', d.pct_clavien_ge2 + '%', '#6A1B9A', `Reintervención: ${d.pct_reintervencion}%`)}
+    ${kpiCard('Mortalidad 30d', d.pct_mortalidad + '%', '#C62828', `Reingreso: ${d.pct_reingreso_30d}%`)}
+  `;
+
+  // La tarta por tipo se construye con los tipos y colores reales del catálogo
+  const datos = {}, colores = [];
+  porTipo.forEach(t => { datos[t.nombre] = t.n; colores.push(t.color || '#999'); });
+  mkDonut('chart-tipo', datos, colores);
+
+  mkDonut('chart-abordaje', d.abordaje || {});
+  mkBarH('chart-cirujano', d.por_cirujano || {}, '#1565C0');
+  const monthly = d.monthly || [];
+  mkChart('chart-mensual', 'line',
+    monthly.map(m => m.mes),
+    [{ label: 'Casos', data: monthly.map(m => m.n), borderColor: '#1565C0', backgroundColor: 'rgba(21,101,192,.12)', fill: true, tension: 0.4 }],
+    { responsive: true, plugins: { legend: { display: false } } }
+  );
+}
+
+async function loadDashboardTipo(tipo) {
+  const d = await api('GET', `/api/stats/tipo/${tipo.id}`);
+  if (!d) return;
+  const color = tipo.color || '#1565C0';
+  const onco = !!tipo.tiene_oncologico;
+
+  // Las tarjetas oncológicas sólo se muestran donde tienen sentido
+  document.querySelectorAll('#dash-tipo .onco-only')
+    .forEach(el => el.classList.toggle('hidden', !onco));
+
+  const kpisComunes = `
+    ${kpiCard('Total', d.total, color, `Edad: ${d.edad_media} a`)}
+    ${kpiCard('Estancia Media', d.estancia_media + ' d', color, `TQ: ${d.tq_medio} min`)}
+    ${kpiCard('Laparoscopia', d.pct_laparoscopia + '%', color, `Conversión: ${d.pct_conversion}%`)}
+    ${kpiCard('Reintervención', d.pct_reintervencion + '%', color, `Clavien ≥ II: ${d.pct_clavien_ge2}%`)}
+    ${kpiCard('Mortalidad 30d', d.pct_mortalidad + '%', '#C62828', `Reingreso: ${d.pct_reingreso_30d}%`)}`;
+
+  const kpisOnco = onco ? `
+    ${kpiCard('Neoadyuvancia', d.pct_neoadyuvancia + '%', '#2E7D32', `pCR: ${d.pct_pcr}%`)}
+    ${kpiCard('Adyuvancia', d.pct_adyuvancia + '%', '#2E7D32', `Márgenes libres: ${d.pct_margenes_libres}%`)}
+    ${kpiCard('Dehiscencia', d.pct_dehiscencia + '%', '#C62828', `Estoma prot.: ${d.pct_estoma_proteccion}%`)}
+    ${kpiCard('Ganglios med.', d.ganglios_media, '#6A1B9A', 'analizados por caso')}` : '';
+
+  document.getElementById('dash-kpis-tp').innerHTML = kpisComunes + kpisOnco;
+
+  mkDonut('tp-chart-sexo', d.por_sexo, ['#1565C0','#E91E63']);
+  mkDonut('tp-chart-asa', d.por_asa, ['#43A047','#FDD835','#FB8C00','#E53935','#7B1FA2']);
+  mkDonut('tp-chart-abordaje', d.por_abordaje);
+  mkDonut('tp-chart-urgencia', d.por_urgencia, ['#2E7D32','#C62828']);
+  mkClavienBar('tp-chart-clavien', d.por_clavien || {}, '#6A1B9A');
+  mkBarH('tp-chart-cirujano', d.por_cirujano || {}, color);
+  mkBarH('tp-chart-diag', d.por_diagnostico || {}, color);
+  mkBarH('tp-chart-interv', d.por_intervencion || {}, color);
+  mkBarH('tp-chart-complic', d.por_tipo_complicacion || {}, '#FB8C00');
+
+  if (onco) {
+    mkDonut('tp-chart-neo', d.por_neoadyuvancia, ['#C62828','#E0E0E0']);
+    mkDonut('tp-chart-ady', d.por_adyuvancia, ['#1565C0','#E0E0E0']);
+    const estKeys = ['0','I','IIA','IIB','IIC','IIIA','IIIB','IIIC','IVA','IVB','IVC'];
+    mkBarV('tp-chart-estadio', estKeys, estKeys.map(k => (d.estadios||{})[k]||0), color);
+    const ri = d.recidiva_intervalos || {};
+    mkChart('tp-chart-recidiva', 'line',
+      INTERVALOS.map(m => `${m}m`),
+      [{ label: 'Casos con recidiva', data: INTERVALOS.map(m => ri[`${m}m`]||0), borderColor: '#C62828', backgroundColor: 'rgba(198,40,40,.1)', fill: true, tension: 0.4, pointRadius: 5 }],
+      { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+    );
+  }
 }
 
 // ── Export ───────────────────────────────────────────────────
@@ -1196,7 +1242,9 @@ function renderTipos() {
       ? '<span class="badge bg-blue-100 text-blue-800 text-xs">onco</span>' : '';
     const f = fila(t.nombre, t.activo, ajTipoSel === t.id,
       () => { ajTipoSel = t.id; ajDiagSel = null; renderTipos(); renderDiagnosticos(); renderIntervenciones(); },
-      onco + BTN(`renombrarTipo(${t.id})`, 'Editar', 'text-blue-600'));
+      onco + BTN(`renombrarTipo(${t.id})`, 'Editar', 'text-blue-600') +
+      BTN(`toggleTipo(${t.id})`, t.activo ? 'Desactivar' : 'Activar',
+          t.activo ? 'text-red-600' : 'text-green-600'));
     const punto = document.createElement('span');
     punto.className = 'w-2.5 h-2.5 rounded-full flex-shrink-0';
     punto.style.background = t.color || '#999';
@@ -1267,6 +1315,22 @@ function renderCirujanos() {
 }
 
 // ── Acciones ─────────────────────────────────────────────────
+async function nuevoTipo() {
+  const nombre = prompt('Nombre del nuevo grupo (p. ej. Cirugía Endocrina):');
+  if (!nombre || !nombre.trim()) return;
+  const onco = confirm(
+    '¿Este grupo lleva seguimiento oncológico?\n\n' +
+    'Aceptar = sí: el formulario mostrará TNM, neoadyuvancia y recidivas, ' +
+    'y tendrá esas gráficas en el dashboard.\nCancelar = no.'
+  );
+  try {
+    await api('POST', '/api/catalogos/tipos',
+      { nombre: nombre.trim(), tiene_oncologico: onco, color: '#1565C0' });
+    await refrescarCatalogo();
+    showToast('Grupo creado — añádele diagnósticos');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
 async function nuevoDiagnostico() {
   if (!ajTipoSel) { showToast('Selecciona primero un tipo de cirugía', 'warn'); return; }
   const nombre = prompt('Nombre del nuevo diagnóstico:');
@@ -1361,6 +1425,7 @@ async function _toggle(url, aviso) {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
+const toggleTipo         = tid => _toggle(`/api/catalogos/tipos/${tid}/toggle`);
 const toggleDiagnostico  = did => _toggle(`/api/catalogos/diagnosticos/${did}/toggle`);
 const toggleIntervencion = iid => _toggle(`/api/catalogos/intervenciones/${iid}/toggle`);
 const toggleCirujano     = cid => _toggle(`/api/catalogos/cirujanos/${cid}/toggle`);
