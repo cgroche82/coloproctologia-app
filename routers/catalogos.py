@@ -231,6 +231,50 @@ def toggle_tipo(
     return {"id": t.id, "activo": t.activo}
 
 
+@router.get("/tipos/{tid}/uso")
+def uso_tipo(
+    tid: int,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_admin_user),
+):
+    """Cuántos registros hay en el grupo. La UI lo consulta antes de borrar."""
+    return {"registros": db.query(Registro).filter(Registro.tipo_id == tid).count()}
+
+
+@router.delete("/tipos/{tid}")
+def eliminar_tipo(
+    tid: int,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_admin_user),
+):
+    """
+    Borrado definitivo del grupo, con sus diagnósticos e intervenciones.
+
+    A diferencia de los demás catálogos, los registros apuntan al grupo por
+    identificador, no por texto: borrar uno que tenga casos los dejaría
+    huérfanos. Por eso aquí sí se exige vaciarlo antes.
+    """
+    t = db.query(TipoCirugia).filter(TipoCirugia.id == tid).first()
+    if not t:
+        raise HTTPException(404, "No encontrado")
+
+    n = db.query(Registro).filter(Registro.tipo_id == tid).count()
+    if n:
+        raise HTTPException(
+            400,
+            f"«{t.nombre}» tiene {n} registro(s). Muévelos a otro grupo antes "
+            f"de eliminarlo, o se quedarían sin grupo."
+        )
+
+    diags = db.query(Diagnostico).filter(Diagnostico.tipo_id == tid).all()
+    for d in diags:
+        db.query(Intervencion).filter(Intervencion.diagnostico_id == d.id).delete()
+        db.delete(d)
+    db.delete(t)
+    db.commit()
+    return {"ok": True, "diagnosticos_eliminados": len(diags)}
+
+
 @router.patch("/tipos/{tid}")
 def editar_tipo(
     tid: int,
@@ -300,6 +344,94 @@ def renombrar_diagnostico(
     d.nombre = nombre
     db.commit()
     return {"id": d.id, "nombre": d.nombre, "activo": d.activo}
+
+
+# Los registros guardan diagnóstico, intervención y cirujano como TEXTO, así
+# que eliminarlos del catálogo nunca altera los casos ya grabados: sólo dejan
+# de ofrecerse. Se devuelve el número de usos para poder avisar antes.
+@router.get("/diagnosticos/{did}/uso")
+def uso_diagnostico(
+    did: int,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_admin_user),
+):
+    d = db.query(Diagnostico).filter(Diagnostico.id == did).first()
+    if not d:
+        raise HTTPException(404, "No encontrado")
+    return {
+        "registros": db.query(Registro).filter(Registro.diagnostico == d.nombre).count(),
+        "intervenciones": db.query(Intervencion)
+                            .filter(Intervencion.diagnostico_id == did).count(),
+    }
+
+
+@router.delete("/diagnosticos/{did}")
+def eliminar_diagnostico(
+    did: int,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_admin_user),
+):
+    d = db.query(Diagnostico).filter(Diagnostico.id == did).first()
+    if not d:
+        raise HTTPException(404, "No encontrado")
+    n = db.query(Intervencion).filter(Intervencion.diagnostico_id == did).delete()
+    db.delete(d)
+    db.commit()
+    return {"ok": True, "intervenciones_eliminadas": n}
+
+
+@router.get("/intervenciones/{iid}/uso")
+def uso_intervencion(
+    iid: int,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_admin_user),
+):
+    i = db.query(Intervencion).filter(Intervencion.id == iid).first()
+    if not i:
+        raise HTTPException(404, "No encontrada")
+    return {"registros": db.query(Registro)
+                           .filter(Registro.intervencion == i.nombre).count()}
+
+
+@router.delete("/intervenciones/{iid}")
+def eliminar_intervencion(
+    iid: int,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_admin_user),
+):
+    i = db.query(Intervencion).filter(Intervencion.id == iid).first()
+    if not i:
+        raise HTTPException(404, "No encontrada")
+    db.delete(i)
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/cirujanos/{cid}/uso")
+def uso_cirujano(
+    cid: int,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_admin_user),
+):
+    c = db.query(Cirujano).filter(Cirujano.id == cid).first()
+    if not c:
+        raise HTTPException(404, "No encontrado")
+    return {"registros": db.query(Registro)
+                           .filter(Registro.cirujano == c.nombre).count()}
+
+
+@router.delete("/cirujanos/{cid}")
+def eliminar_cirujano(
+    cid: int,
+    db: Session = Depends(get_db),
+    _: Usuario = Depends(get_admin_user),
+):
+    c = db.query(Cirujano).filter(Cirujano.id == cid).first()
+    if not c:
+        raise HTTPException(404, "No encontrado")
+    db.delete(c)
+    db.commit()
+    return {"ok": True}
 
 
 @router.patch("/diagnosticos/{did}/oncologico")

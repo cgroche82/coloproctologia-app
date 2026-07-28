@@ -1243,8 +1243,9 @@ function renderTipos() {
     const f = fila(t.nombre, t.activo, ajTipoSel === t.id,
       () => { ajTipoSel = t.id; ajDiagSel = null; renderTipos(); renderDiagnosticos(); renderIntervenciones(); },
       onco + BTN(`renombrarTipo(${t.id})`, 'Editar', 'text-blue-600') +
-      BTN(`toggleTipo(${t.id})`, t.activo ? 'Desactivar' : 'Activar',
-          t.activo ? 'text-red-600' : 'text-green-600'));
+      BTN(`toggleTipo(${t.id})`, t.activo ? 'Ocultar' : 'Mostrar',
+          t.activo ? 'text-amber-600' : 'text-green-600') +
+      BTN(`eliminarTipo(${t.id})`, '✕', 'text-red-600'));
     const punto = document.createElement('span');
     punto.className = 'w-2.5 h-2.5 rounded-full flex-shrink-0';
     punto.style.background = t.color || '#999';
@@ -1273,8 +1274,9 @@ function renderDiagnosticos() {
       onco +
       BTN(`toggleOncologico(${d.id})`, 'Onco', 'text-purple-600') +
       BTN(`renombrarDiagnostico(${d.id})`, 'Editar', 'text-blue-600') +
-      BTN(`toggleDiagnostico(${d.id})`, d.activo ? 'Desactivar' : 'Activar',
-          d.activo ? 'text-red-600' : 'text-green-600')));
+      BTN(`toggleDiagnostico(${d.id})`, d.activo ? 'Ocultar' : 'Mostrar',
+          d.activo ? 'text-amber-600' : 'text-green-600') +
+      BTN(`eliminarDiagnostico(${d.id})`, '✕', 'text-red-600')));
   });
 }
 
@@ -1294,8 +1296,9 @@ function renderIntervenciones() {
   diag.intervenciones.forEach(i => {
     cont.appendChild(fila(i.nombre, i.activo, false, () => {},
       BTN(`renombrarIntervencion(${i.id})`, 'Editar', 'text-blue-600') +
-      BTN(`toggleIntervencion(${i.id})`, i.activo ? 'Desactivar' : 'Activar',
-          i.activo ? 'text-red-600' : 'text-green-600')));
+      BTN(`toggleIntervencion(${i.id})`, i.activo ? 'Ocultar' : 'Mostrar',
+          i.activo ? 'text-amber-600' : 'text-green-600') +
+      BTN(`eliminarIntervencion(${i.id})`, '✕', 'text-red-600')));
   });
 }
 
@@ -1309,8 +1312,9 @@ function renderCirujanos() {
   CIRUJANOS_ADMIN.forEach(c => {
     cont.appendChild(fila(c.nombre, c.activo, false, () => {},
       BTN(`renombrarCirujano(${c.id})`, 'Editar', 'text-blue-600') +
-      BTN(`toggleCirujano(${c.id})`, c.activo ? 'Desactivar' : 'Activar',
-          c.activo ? 'text-red-600' : 'text-green-600')));
+      BTN(`toggleCirujano(${c.id})`, c.activo ? 'Ocultar' : 'Mostrar',
+          c.activo ? 'text-amber-600' : 'text-green-600') +
+      BTN(`eliminarCirujano(${c.id})`, '✕', 'text-red-600')));
   });
 }
 
@@ -1415,6 +1419,72 @@ async function renombrarTipo(tid) {
     await refrescarCatalogo();
     showToast('Tipo actualizado');
   } catch (e) { showToast(e.message, 'error'); }
+}
+
+// ── Eliminar del catálogo ────────────────────────────────────
+// Los registros guardan diagnóstico, intervención y cirujano como texto, así
+// que borrarlos del catálogo no toca los casos ya grabados. El grupo es la
+// excepción: los registros lo referencian por identificador.
+async function _eliminar(tipoRecurso, id, nombre) {
+  let uso;
+  try {
+    uso = await api('GET', `/api/catalogos/${tipoRecurso}/${id}/uso`);
+  } catch (e) { showToast(e.message, 'error'); return; }
+
+  const n = uso.registros || 0;
+  let msg = `¿Eliminar «${nombre}» definitivamente?\n\n`;
+
+  if (tipoRecurso === 'tipos') {
+    if (n) {
+      showToast(`«${nombre}» tiene ${n} registro(s). Muévelos a otro grupo primero.`, 'error');
+      return;
+    }
+    msg += 'No tiene ningún registro.\n';
+    msg += 'Se borrarán también sus diagnósticos e intervenciones.';
+  } else if (tipoRecurso === 'diagnosticos') {
+    msg += n
+      ? `Se usa en ${n} registro(s). Esos casos CONSERVAN el diagnóstico escrito; solo dejará de ofrecerse en nuevos registros.\n`
+      : 'No se usa en ningún registro.\n';
+    if (uso.intervenciones) msg += `Se borrarán también sus ${uso.intervenciones} intervención(es).`;
+  } else {
+    msg += n
+      ? `Se usa en ${n} registro(s). Esos casos CONSERVAN el dato; solo dejará de ofrecerse en nuevos registros.`
+      : 'No se usa en ningún registro.';
+  }
+  msg += '\n\nEsta acción no se puede deshacer.';
+
+  if (!confirm(msg)) return;
+  try {
+    await api('DELETE', `/api/catalogos/${tipoRecurso}/${id}`);
+    if (tipoRecurso === 'tipos' && ajTipoSel === id) { ajTipoSel = null; ajDiagSel = null; }
+    if (tipoRecurso === 'diagnosticos' && ajDiagSel === id) ajDiagSel = null;
+    await refrescarCatalogo();
+    showToast('Eliminado');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+function eliminarTipo(tid) {
+  const t = CATALOGO_ADMIN.find(x => x.id === tid);
+  if (t) _eliminar('tipos', tid, t.nombre);
+}
+
+function eliminarDiagnostico(did) {
+  const d = _buscarDiag(did);
+  if (d) _eliminar('diagnosticos', did, d.nombre);
+}
+
+function eliminarIntervencion(iid) {
+  for (const t of CATALOGO_ADMIN) {
+    for (const d of t.diagnosticos) {
+      const i = d.intervenciones.find(x => x.id === iid);
+      if (i) return _eliminar('intervenciones', iid, i.nombre);
+    }
+  }
+}
+
+function eliminarCirujano(cid) {
+  const c = CIRUJANOS_ADMIN.find(x => x.id === cid);
+  if (c) _eliminar('cirujanos', cid, c.nombre);
 }
 
 async function _toggle(url, aviso) {
