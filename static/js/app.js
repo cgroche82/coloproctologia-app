@@ -163,6 +163,7 @@ async function doLogin() {
     if (data.es_admin) {
       document.getElementById('nav-admin').classList.remove('hidden');
       document.getElementById('nav-ajustes').classList.remove('hidden');
+      document.getElementById('nav-importar').classList.remove('hidden');
       document.getElementById('security-panel').classList.remove('hidden');
     }
     initApp();
@@ -202,6 +203,7 @@ window.addEventListener('DOMContentLoaded', () => {
         if (data.es_admin) {
           document.getElementById('nav-admin').classList.remove('hidden');
           document.getElementById('nav-ajustes').classList.remove('hidden');
+          document.getElementById('nav-importar').classList.remove('hidden');
           document.getElementById('security-panel').classList.remove('hidden');
         }
         initApp();
@@ -216,7 +218,7 @@ function toggleSidebar() {
 }
 
 // ── Section navigation ───────────────────────────────────────
-const TITLES = { formulario: 'Nuevo Registro', database: 'Base de Datos', dashboard: 'Dashboard', export: 'Exportación', ajustes: 'Ajustes', admin: 'Gestión de Usuarios' };
+const TITLES = { formulario: 'Nuevo Registro', database: 'Base de Datos', dashboard: 'Dashboard', export: 'Exportación', importar: 'Importar', ajustes: 'Ajustes', admin: 'Gestión de Usuarios' };
 
 function showSection(name) {
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -261,9 +263,13 @@ function updateStepUI() {
 }
 
 function validateStep(n) {
+  // Sólo lo imprescindible: NHC y fecha identifican el episodio, y el grupo
+  // hace falta para guardarlo. Lo demás queda opcional porque los casos
+  // importados de Lista de Espera no traen sexo, ASA ni cirujano, y deben
+  // poder guardarse y completarse después.
   const required = {
-    1: [['f-nhc', 'NHC'], ['f-fecha-intervencion', 'Fecha Intervención'], ['f-sexo', 'Sexo'], ['f-asa', 'ASA'], ['f-cirujano', 'Cirujano']],
-    2: [['f-tipo-cirugia', 'Tipo Cirugía'], ['f-diagnostico', 'Diagnóstico'], ['f-intervencion', 'Intervención']],
+    1: [['f-nhc', 'NHC'], ['f-fecha-intervencion', 'Fecha Intervención']],
+    2: [['f-tipo-cirugia', 'Tipo Cirugía']],
     3: [], 4: []
   };
   for (const [id, label] of (required[n] || [])) {
@@ -373,14 +379,26 @@ function updateOncologicoVisibility() {
 function calcEdad() {
   const fi = document.getElementById('f-fecha-intervencion').value;
   const fn = document.getElementById('f-fecha-nacimiento').value;
+  const campo = document.getElementById('f-edad');
+  const nota = document.getElementById('f-edad-nota');
+
+  // Con fecha de nacimiento la edad se calcula y se bloquea (más fiable que
+  // teclearla). Sin ella se escribe a mano: los datos importados de Lista de
+  // Espera traen la edad pero no la fecha de nacimiento.
   if (fi && fn) {
     const d1 = new Date(fi), d2 = new Date(fn);
     let age = d1.getFullYear() - d2.getFullYear();
     const m = d1.getMonth() - d2.getMonth();
     if (m < 0 || (m === 0 && d1.getDate() < d2.getDate())) age--;
-    document.getElementById('f-edad').value = age >= 0 ? age : '';
+    campo.value = age >= 0 ? age : '';
+    campo.readOnly = true;
+    campo.classList.add('bg-gray-50');
+    if (nota) nota.textContent = 'Calculada desde la fecha de nacimiento';
   } else {
-    document.getElementById('f-edad').value = '';
+    // No se borra lo ya escrito: sólo se libera el campo
+    campo.readOnly = false;
+    campo.classList.remove('bg-gray-50');
+    if (nota) nota.textContent = 'Se calcula sola si pones la fecha de nacimiento';
   }
 }
 
@@ -1189,6 +1207,215 @@ async function changeAdminPassword() {
     errEl.textContent = e.message;
     errEl.classList.remove('hidden');
   }
+}
+
+// ── IMPORTAR desde Lista de Espera ───────────────────────────
+let impFilas = [];   // propuesta devuelta por el análisis, editable en pantalla
+
+async function analizarImportacion() {
+  const input = document.getElementById('imp-file');
+  const file = input.files[0];
+  if (!file) { showToast('Selecciona el Excel de Lista de Espera', 'warn'); return; }
+
+  document.getElementById('imp-cargando').classList.remove('hidden');
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/import/lista-espera/analizar', {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd,
+    });
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    if (!res.ok) throw new Error(data.detail || 'Error al analizar');
+
+    // Se marcan por defecto los importables que no estén ya en la base
+    impFilas = data.filas.map(f => ({
+      ...f,
+      incluir: f.importable && f.estado === 'nuevo',
+      diagnostico: f.diagnostico_sugerido || '',
+      intervencion: f.intervencion_sugerida || '',
+    }));
+
+    pintarResumenImport(data);
+    pintarFilasImport();
+    document.getElementById('imp-paso1').classList.add('hidden');
+    document.getElementById('imp-paso2').classList.remove('hidden');
+  } catch (e) {
+    showToast(e.message, 'error');
+  } finally {
+    document.getElementById('imp-cargando').classList.add('hidden');
+  }
+}
+
+function pintarResumenImport(data) {
+  const r = data.resumen;
+  const linea = (t, n, color) => n
+    ? `<div><span class="badge ${color} mr-2">${n}</span>${t}</div>` : '';
+  document.getElementById('imp-resumen').innerHTML =
+    linea('casos nuevos, listos para importar', r.nuevos, 'bg-green-100 text-green-800') +
+    linea('ya estaban en la base de datos (se omiten)', r.ya_en_base, 'bg-gray-100 text-gray-700') +
+    linea('repetidos dentro del propio Excel', r.repetidos_en_excel, 'bg-amber-100 text-amber-800') +
+    linea('sin grupo ni fecha: no se pueden importar', r.no_importables, 'bg-red-100 text-red-800') +
+    linea('con el grupo deducido del diagnóstico', r.grupo_sugerido, 'bg-blue-100 text-blue-800') +
+    linea('sin diagnóstico equivalente en el catálogo', r.sin_diagnostico, 'bg-purple-100 text-purple-800') +
+    linea('con dos procedimientos posibles («VS»)', r.con_alternativas, 'bg-orange-100 text-orange-800');
+
+  const avisos = [];
+  if (data.cirujanos_desconocidos?.length) {
+    avisos.push(`
+      <div class="rounded-lg p-3 text-sm" style="background:#FFF7ED;border:1px solid #FED7AA">
+        <strong class="text-orange-800">Cirujanos que no están en tu catálogo:</strong>
+        ${data.cirujanos_desconocidos.join(', ')}.
+        <br><span class="text-orange-700 text-xs">Esos casos se importarán sin cirujano.
+        Si quieres conservarlo, añádelos primero en Ajustes y vuelve a analizar.</span>
+      </div>`);
+  }
+  avisos.push(`
+    <div class="rounded-lg p-3 text-sm mt-2" style="background:#EFF6FF;border:1px solid #BFDBFE">
+      <strong class="text-blue-800">Ten en cuenta:</strong>
+      <span class="text-blue-700">este Excel es de planificación, así que diagnósticos y
+      procedimientos reflejan lo previsto. Conviene repasarlos después contra el parte quirúrgico.
+      Los nombres de los pacientes no se importan: sólo el NHC.</span>
+    </div>`);
+  document.getElementById('imp-avisos').innerHTML = avisos.join('');
+}
+
+function _selectGrupo(i, f) {
+  const opts = CATALOGO.map(t =>
+    `<option value="${t.id}" ${t.id === f.tipo_id ? 'selected' : ''}>${t.nombre}</option>`).join('');
+  const marca = f.grupo_sugerido ? ' style="border-color:#93C5FD;background:#EFF6FF"' : '';
+  return `<select onchange="cambiarGrupoImport(${i}, this.value)" class="input text-xs py-1"${marca}>
+            <option value="">— sin grupo —</option>${opts}</select>`;
+}
+
+function _selectDiagnostico(i, f) {
+  const tipo = CATALOGO.find(t => t.id === f.tipo_id);
+  const lista = tipo ? tipo.diagnosticos : [];
+  const opts = lista.map(d =>
+    `<option value="${d.nombre}" ${d.nombre === f.diagnostico ? 'selected' : ''}>${d.nombre}</option>`).join('');
+  const original = f.diagnostico_bruto
+    ? `<div class="text-xs text-gray-400 truncate" title="${f.diagnostico_bruto}">${f.diagnostico_bruto}</div>` : '';
+  return original + `<select onchange="impFilas[${i}].diagnostico = this.value" class="input text-xs py-1">
+            <option value="">— sin asignar —</option>${opts}</select>`;
+}
+
+function _selectIntervencion(i, f) {
+  const tipo = CATALOGO.find(t => t.id === f.tipo_id);
+  const diag = tipo && tipo.diagnosticos.find(d => d.nombre === f.diagnostico);
+  const lista = diag ? diag.intervenciones : [];
+  const opts = lista.map(x =>
+    `<option value="${x.nombre}" ${x.nombre === f.intervencion ? 'selected' : ''}>${x.nombre}</option>`).join('');
+
+  // Cuando el Excel traía "X VS Y" se ofrecen ambas: no consta cuál se hizo
+  let alt = '';
+  if (f.alternativas?.length) {
+    alt = `<div class="text-xs mb-1" style="color:#C2410C">Constan dos opciones — elige la realizada:</div>` +
+      f.alternativas.map(a =>
+        `<label class="flex items-center gap-1 text-xs cursor-pointer">
+           <input type="radio" name="alt-${i}" value="${a}"
+                  onchange="impFilas[${i}].intervencion = this.value; pintarContadorImport()"/>
+           <span class="truncate" title="${a}">${a}</span></label>`).join('');
+    return alt;
+  }
+  const original = f.procedimiento_bruto
+    ? `<div class="text-xs text-gray-400 truncate" title="${f.procedimiento_bruto}">${f.procedimiento_bruto}</div>` : '';
+  return original + `<select onchange="impFilas[${i}].intervencion = this.value" class="input text-xs py-1">
+            <option value="">— sin asignar —</option>${opts}</select>`;
+}
+
+function cambiarGrupoImport(i, valor) {
+  impFilas[i].tipo_id = valor ? parseInt(valor) : null;
+  // Al cambiar de grupo el diagnóstico anterior puede no pertenecer al nuevo
+  const tipo = CATALOGO.find(t => t.id === impFilas[i].tipo_id);
+  if (!tipo || !tipo.diagnosticos.some(d => d.nombre === impFilas[i].diagnostico)) {
+    impFilas[i].diagnostico = '';
+    impFilas[i].intervencion = '';
+  }
+  impFilas[i].importable = !!(impFilas[i].nhc && impFilas[i].fecha_intervencion && impFilas[i].tipo_id);
+  pintarFilasImport();
+}
+
+const ESTADO_BADGE = {
+  ya_en_base: '<span class="badge bg-gray-100 text-gray-700 text-xs">ya está</span>',
+  repetido_en_excel: '<span class="badge bg-amber-100 text-amber-800 text-xs">repetido</span>',
+};
+
+function necesitaRevision(f) {
+  return f.grupo_sugerido || !f.tipo_id || !f.diagnostico ||
+         f.alternativas?.length || f.estado !== 'nuevo';
+}
+
+function pintarFilasImport() {
+  const soloDudosos = document.getElementById('imp-solo-dudosos').checked;
+  const tbody = document.getElementById('imp-tbody');
+  tbody.innerHTML = '';
+
+  impFilas.forEach((f, i) => {
+    if (soloDudosos && !necesitaRevision(f)) return;
+    const tr = document.createElement('tr');
+    if (f.estado !== 'nuevo') tr.style.background = '#FFFBEB';
+    if (!f.importable) tr.style.background = '#FEF2F2';
+
+    tr.innerHTML = `
+      <td><input type="checkbox" ${f.incluir ? 'checked' : ''} ${f.importable ? '' : 'disabled'}
+                 onchange="impFilas[${i}].incluir = this.checked; pintarContadorImport()" class="w-4 h-4"/></td>
+      <td class="whitespace-nowrap">
+        <div class="font-medium">${f.nhc || '<span class="text-red-600">sin NHC</span>'}</div>
+        <div class="text-xs text-gray-500">${f.fecha_intervencion || '<span class="text-red-600">sin fecha</span>'}</div>
+        ${ESTADO_BADGE[f.estado] || ''}
+        ${f.avisos?.length ? `<div class="text-xs text-amber-700">${f.avisos.join('. ')}</div>` : ''}
+      </td>
+      <td>${_selectGrupo(i, f)}</td>
+      <td>${_selectDiagnostico(i, f)}</td>
+      <td>${_selectIntervencion(i, f)}</td>
+      <td class="text-xs">${f.cirujano
+          || (f.cirujano_bruto ? `<span class="text-orange-600" title="No está en el catálogo">${f.cirujano_bruto} ⚠</span>` : '—')}</td>`;
+    tbody.appendChild(tr);
+  });
+  pintarContadorImport();
+}
+
+function pintarContadorImport() {
+  const n = impFilas.filter(f => f.incluir && f.importable).length;
+  document.getElementById('imp-contador').textContent =
+    `${n} de ${impFilas.length} marcados para importar`;
+  document.getElementById('imp-btn-confirmar').textContent =
+    n ? `Importar ${n} caso${n === 1 ? '' : 's'}` : 'Nada marcado';
+}
+
+function marcarTodos(v) {
+  impFilas.forEach(f => { if (f.importable) f.incluir = v; });
+  pintarFilasImport();
+}
+
+function cancelarImportacion() {
+  impFilas = [];
+  document.getElementById('imp-paso2').classList.add('hidden');
+  document.getElementById('imp-paso1').classList.remove('hidden');
+  document.getElementById('imp-file').value = '';
+}
+
+async function confirmarImportacion() {
+  const filas = impFilas.filter(f => f.incluir && f.importable).map(f => ({
+    nhc: f.nhc, fecha_intervencion: f.fecha_intervencion, tipo_id: f.tipo_id,
+    diagnostico: f.diagnostico || null, intervencion: f.intervencion || null,
+    cirujano: f.cirujano || null, edad: f.edad, sexo: f.sexo,
+    observaciones: f.observaciones || null,
+  }));
+  if (!filas.length) { showToast('No hay ningún caso marcado', 'warn'); return; }
+
+  const sinDiag = filas.filter(f => !f.diagnostico).length;
+  let msg = `Se importarán ${filas.length} caso(s).`;
+  if (sinDiag) msg += `\n\n${sinDiag} van sin diagnóstico asignado: podrás completarlos después desde Base de Datos.`;
+  msg += '\n\n¿Continuar?';
+  if (!confirm(msg)) return;
+
+  try {
+    const r = await api('POST', '/api/import/lista-espera/confirmar', { filas });
+    showToast(`Importados ${r.insertados} casos` + (r.omitidos ? `, ${r.omitidos} omitidos` : ''));
+    if (r.errores?.length) console.warn('Errores de importación:', r.errores);
+    cancelarImportacion();
+    showSection('database');
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 // ── AJUSTES: catálogos ───────────────────────────────────────

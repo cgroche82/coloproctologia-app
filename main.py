@@ -37,7 +37,7 @@ class ResetPasswordRequest(BaseModel):
 
 # ── In-memory recovery codes: {code: (username, expires_timestamp)} ───────────
 _recovery_codes: dict[str, tuple[str, float]] = {}
-from routers import registros, stats, export, catalogos
+from routers import registros, stats, export, catalogos, importador
 from seed_catalogos import seed_catalogos
 from migracion_tabla_unica import migrar as migrar_tabla_unica
 
@@ -57,6 +57,7 @@ app.include_router(registros.router)
 app.include_router(stats.router)
 app.include_router(export.router)
 app.include_router(catalogos.router)
+app.include_router(importador.router)
 
 
 @app.on_event("startup")

@@ -214,6 +214,13 @@
       </svg>
       <span class="nav-label">Exportación</span>
     </div>
+    <div id="nav-importar" class="nav-item hidden" onclick="showSection('importar')" data-section="importar">
+      <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+      </svg>
+      <span class="nav-label">Importar</span>
+    </div>
     <div id="nav-ajustes" class="nav-item hidden" onclick="showSection('ajustes')" data-section="ajustes">
       <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -327,29 +334,30 @@
               <input id="f-fecha-intervencion" type="date" class="input" onchange="calcEdad();calcEstancia()"/>
             </div>
             <div>
-              <label class="label">Fecha Nacimiento <span class="text-red-500">*</span></label>
+              <label class="label">Fecha Nacimiento</label>
               <input id="f-fecha-nacimiento" type="date" class="input" onchange="calcEdad()"/>
             </div>
             <div>
-              <label class="label">Edad (calculada)</label>
-              <input id="f-edad" type="text" class="input bg-gray-50" readonly placeholder="—"/>
+              <label class="label">Edad</label>
+              <input id="f-edad" type="number" min="0" max="120" class="input" placeholder="años"/>
+              <p id="f-edad-nota" class="text-xs text-gray-400 mt-1">Se calcula sola si pones la fecha de nacimiento</p>
             </div>
             <div>
-              <label class="label">Sexo <span class="text-red-500">*</span></label>
+              <label class="label">Sexo</label>
               <select id="f-sexo" class="input">
                 <option value="">— Seleccionar —</option>
                 <option>Masculino</option><option>Femenino</option>
               </select>
             </div>
             <div>
-              <label class="label">ASA <span class="text-red-500">*</span></label>
+              <label class="label">ASA</label>
               <select id="f-asa" class="input">
                 <option value="">— Seleccionar —</option>
                 <option>I</option><option>II</option><option>III</option><option>IV</option><option>V</option>
               </select>
             </div>
             <div class="md:col-span-2">
-              <label class="label">Cirujano <span class="text-red-500">*</span></label>
+              <label class="label">Cirujano</label>
               <!-- Se rellena desde el catálogo (Ajustes) al iniciar sesión -->
               <select id="f-cirujano" class="input">
                 <option value="">— Seleccionar —</option>
@@ -377,13 +385,13 @@
               </select>
             </div>
             <div>
-              <label class="label">Diagnóstico <span class="text-red-500">*</span></label>
+              <label class="label">Diagnóstico</label>
               <select id="f-diagnostico" class="input" onchange="onDiagnostico()">
                 <option value="">— Seleccione tipo primero —</option>
               </select>
             </div>
             <div>
-              <label class="label">Intervención <span class="text-red-500">*</span></label>
+              <label class="label">Intervención</label>
               <select id="f-intervencion" class="input">
                 <option value="">— Seleccione diagnóstico —</option>
               </select>
@@ -915,6 +923,71 @@
             </div>
           </div>
 
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════ IMPORTAR ══════════════════ -->
+    <div id="section-importar" class="section">
+
+      <!-- Paso 1: elegir fichero -->
+      <div id="imp-paso1" class="card p-6 max-w-2xl mb-6">
+        <h2 class="text-lg font-bold text-gray-900 mb-1">Importar intervenidos de Lista de Espera</h2>
+        <p class="text-sm text-gray-500 mb-5">
+          Sube el Excel que genera la aplicación de Lista de Espera. Primero verás
+          <strong>qué se va a importar</strong> y podrás corregirlo; no se guarda nada hasta que lo confirmes.
+        </p>
+        <div class="flex items-center gap-3 flex-wrap">
+          <input id="imp-file" type="file" accept=".xlsx,.xlsm"
+                 class="text-sm text-gray-600 file:mr-2 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+          <button onclick="analizarImportacion()" class="btn btn-primary">Analizar</button>
+        </div>
+        <div id="imp-cargando" class="hidden mt-4 text-sm text-gray-500">Leyendo el Excel…</div>
+      </div>
+
+      <!-- Paso 2: revisión -->
+      <div id="imp-paso2" class="hidden">
+        <div class="card p-5 mb-4">
+          <div class="flex justify-between items-start gap-4 flex-wrap">
+            <div>
+              <h3 class="font-bold text-gray-900 mb-2">Revisión previa</h3>
+              <div id="imp-resumen" class="text-sm text-gray-600 space-y-1"></div>
+            </div>
+            <div class="flex gap-2 flex-shrink-0">
+              <button onclick="cancelarImportacion()" class="btn btn-ghost">Cancelar</button>
+              <button id="imp-btn-confirmar" onclick="confirmarImportacion()" class="btn btn-success">Importar</button>
+            </div>
+          </div>
+          <div id="imp-avisos" class="mt-4"></div>
+        </div>
+
+        <div class="card overflow-hidden">
+          <div class="px-4 py-2.5 bg-gray-50 border-b flex items-center gap-4 flex-wrap text-sm">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input id="imp-todos" type="checkbox" checked onchange="marcarTodos(this.checked)" class="w-4 h-4"/>
+              <span class="font-medium text-gray-700">Marcar todo</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input id="imp-solo-dudosos" type="checkbox" onchange="pintarFilasImport()" class="w-4 h-4"/>
+              <span class="text-gray-600">Ver sólo los que necesitan revisión</span>
+            </label>
+            <span id="imp-contador" class="ml-auto text-gray-500"></span>
+          </div>
+          <div class="overflow-x-auto" style="max-height:60vh">
+            <table class="text-sm">
+              <thead class="sticky top-0">
+                <tr>
+                  <th style="width:36px"></th>
+                  <th>NHC · Fecha</th>
+                  <th style="min-width:150px">Grupo</th>
+                  <th style="min-width:230px">Diagnóstico</th>
+                  <th style="min-width:230px">Intervención</th>
+                  <th style="min-width:120px">Cirujano</th>
+                </tr>
+              </thead>
+              <tbody id="imp-tbody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
