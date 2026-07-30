@@ -16,6 +16,7 @@ import sys
 import time
 import socket
 import getpass
+import shutil
 import platform
 import tempfile
 import threading
@@ -252,12 +253,32 @@ def find_browser():
     return None, None
 
 
-def launch_browser(browser: str, url: str):
+def preparar_perfil() -> str:
     """
-    Perfil dedicado en disco local: fuerza un proceso nuevo (así podemos
-    esperar a que se cierre) y evita escribir el perfil en la unidad de red.
+    Perfil de navegador exclusivo de esta ejecución, en disco local.
+
+    Debe ser exclusivo, no compartido entre arranques: si un Chrome de una
+    sesión anterior sobrevive (cierre anómalo, cuelgue) y aún tiene tomado el
+    perfil, el nuevo se lo cede y sale al instante, con lo que la aplicación
+    acaba mostrando el diálogo de respaldo en vez de su ventana.
+
+    En disco local, además, porque escribir el perfil en la unidad de red sería
+    lento y conflictivo.
     """
-    profile = os.path.join(tempfile.gettempdir(), "coloproctologia_perfil")
+    base = os.path.join(tempfile.gettempdir(), "coloproctologia_perfiles")
+    os.makedirs(base, exist_ok=True)
+
+    # Barrido de perfiles huérfanos. Los que siga usando algún Chrome vivo
+    # fallarán al borrarse y se quedan: por eso ignore_errors.
+    for nombre in os.listdir(base):
+        shutil.rmtree(os.path.join(base, nombre), ignore_errors=True)
+
+    mio = os.path.join(base, f"sesion_{os.getpid()}")
+    os.makedirs(mio, exist_ok=True)
+    return mio
+
+
+def launch_browser(browser: str, url: str, profile: str):
     args = [
         browser,
         f"--app={url}",
@@ -329,6 +350,7 @@ def main() -> int:
 
     browser_proc = None
     server = None
+    perfil = None
     try:
         port = free_port()
         log(f"Puerto {port} · BD {DB_FILE}")
@@ -347,7 +369,8 @@ def main() -> int:
 
         if browser:
             log(f"Abriendo en {name}")
-            browser_proc = launch_browser(browser, url)
+            perfil = preparar_perfil()
+            browser_proc = launch_browser(browser, url, perfil)
             started = time.time()
             browser_proc.wait()
 
@@ -387,6 +410,8 @@ def main() -> int:
         if server is not None:
             server.should_exit = True
             time.sleep(1.0)
+        if perfil:
+            shutil.rmtree(perfil, ignore_errors=True)
         lock.release()
         log("Cerrado")
 
