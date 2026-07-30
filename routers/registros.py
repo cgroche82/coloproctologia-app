@@ -60,10 +60,27 @@ def create(
     return _serializar(registro, _mapa_tipos(db))
 
 
+# Columnas por las que se puede ordenar pinchando en la cabecera. Es una lista
+# blanca a propósito: el nombre llega del navegador y no debe poder apuntar a
+# cualquier campo. "tipo" ordena por el nombre del grupo, no por su id.
+ORDENABLES = {
+    "id": Registro.id,
+    "fecha_intervencion": Registro.fecha_intervencion,
+    "diagnostico": Registro.diagnostico,
+    "intervencion": Registro.intervencion,
+    "nhc": Registro.nhc,
+    "cirujano": Registro.cirujano,
+    "asa": Registro.asa,
+    "tipo": TipoCirugia.nombre,
+}
+
+
 @router.get("", response_model=dict)
 def list_all(
     page: int = 1,
     page_size: int = 20,
+    orden: str = "fecha_intervencion",
+    dir: str = "desc",
     tipo_id: Optional[int] = None,
     fecha_desde: Optional[str] = None,
     fecha_hasta: Optional[str] = None,
@@ -91,7 +108,15 @@ def list_all(
         q = q.filter(Registro.asa == asa)
 
     total = q.count()
-    items = (q.order_by(Registro.fecha_intervencion.desc())
+
+    columna = ORDENABLES.get(orden, Registro.fecha_intervencion)
+    if orden == "tipo":
+        # Ordenar por el nombre del grupo exige traer la tabla de tipos
+        q = q.join(TipoCirugia, Registro.tipo_id == TipoCirugia.id)
+    criterio = columna.asc() if dir == "asc" else columna.desc()
+    # Segundo criterio estable: sin él, las filas con el mismo valor bailan
+    # entre páginas y algún registro puede repetirse o no salir nunca
+    items = (q.order_by(criterio, Registro.id.desc())
               .offset((page - 1) * page_size).limit(page_size).all())
     tipos = _mapa_tipos(db)
     return {

@@ -12,6 +12,8 @@ let editTipo = null;
 let dbCurrentPage = 1;
 let dbCurrentTab = 'todos';
 let dbTotalPages = 1;
+let dbOrden = 'fecha_intervencion';   // columna por la que se ordena
+let dbDir = 'desc';
 let charts = {};
 
 // ── Catálogo (se carga desde /api/catalogos/arbol al iniciar sesión) ──
@@ -227,7 +229,9 @@ function showSection(name) {
   document.querySelector(`[data-section="${name}"]`)?.classList.add('active');
   document.getElementById('page-title').textContent = TITLES[name] || name;
 
-  if (name === 'database') { dbCurrentPage = 1; construirDbTabs(); loadDbTable(); }
+  if (name === 'database') {
+    dbCurrentPage = 1; construirDbTabs(); activarCabecerasOrden(); loadDbTable();
+  }
   if (name === 'dashboard') { dashCurrentTab = 'global'; switchDashTab('global'); }
   if (name === 'ajustes') loadAjustes();
   if (name === 'admin') loadAdminUsers();
@@ -259,7 +263,9 @@ function updateStepUI() {
   }
   document.getElementById('btn-prev').classList.toggle('hidden', currentStep === 1);
   document.getElementById('btn-next').classList.toggle('hidden', currentStep === 4);
-  document.getElementById('btn-save').classList.toggle('hidden', currentStep !== 4);
+  // Guardar está disponible en los cuatro pasos: al editar un caso puede que
+  // sólo haya que retocar un dato del paso 1 y no tenga sentido recorrerlo todo
+  document.getElementById('btn-save').classList.remove('hidden');
 }
 
 function validateStep(n) {
@@ -276,6 +282,21 @@ function validateStep(n) {
     if (!document.getElementById(id)?.value) {
       showToast(`${label} es obligatorio`, 'error');
       document.getElementById(id)?.focus();
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Valida los cuatro pasos, no sólo el visible. Como Guardar está disponible en
+ * todos, hay que poder avisar de un campo obligatorio que esté en otro paso y
+ * llevar al usuario hasta él.
+ */
+function validateAll() {
+  for (let n = 1; n <= 4; n++) {
+    if (!validateStep(n)) {
+      if (currentStep !== n) goToStep(n);
       return false;
     }
   }
@@ -299,7 +320,9 @@ function onTipoCirugia() {
   diagnosticosDe(tipo).forEach(d => {
     const o = document.createElement('option'); o.value = d.nombre; o.textContent = d.nombre; diagSel.appendChild(o);
   });
+  añadirOpcionOtro(diagSel);
   document.getElementById('f-intervencion').innerHTML = '<option value="">— Seleccione diagnóstico —</option>';
+  ocultarCamposOtro();
   // El estoma de protección y la dehiscencia sólo aplican a tipos con
   // seguimiento oncológico (antes cableado a "colorrectal")
   const conOnco = !!tipoPorSlug(tipo)?.tiene_oncologico;
@@ -313,16 +336,88 @@ function onTipoCirugia() {
   loadNextId();
 }
 
+// El catálogo no puede cubrir todo: siempre se ofrece escribir un valor libre
+const OTRO = '__OTRO__';
+
+function añadirOpcionOtro(sel) {
+  const o = document.createElement('option');
+  o.value = OTRO;
+  o.textContent = '— Otro (escribir) —';
+  sel.appendChild(o);
+}
+
+function ocultarCamposOtro() {
+  ['wrap-diagnostico-otro', 'wrap-intervencion-otro']
+    .forEach(id => document.getElementById(id)?.classList.add('hidden'));
+}
+
 function onDiagnostico() {
   const tipo = document.getElementById('f-tipo-cirugia').value;
   const diag = document.getElementById('f-diagnostico').value;
+  const esOtro = diag === OTRO;
+  document.getElementById('wrap-diagnostico-otro').classList.toggle('hidden', !esOtro);
+
   const sel = document.getElementById('f-intervencion');
   sel.innerHTML = '<option value="">— Seleccionar —</option>';
   const d = diagnosticoPorNombre(tipo, diag);
   (d ? d.intervenciones : []).forEach(i => {
     const o = document.createElement('option'); o.value = i.nombre; o.textContent = i.nombre; sel.appendChild(o);
   });
+  // Con diagnóstico libre no hay lista de intervenciones: sólo cabe escribirla
+  añadirOpcionOtro(sel);
+  if (esOtro) sel.value = OTRO;
+  onIntervencion();
   updateOncologicoVisibility();
+}
+
+function onIntervencion() {
+  const esOtro = document.getElementById('f-intervencion').value === OTRO;
+  document.getElementById('wrap-intervencion-otro').classList.toggle('hidden', !esOtro);
+}
+
+/** Incorpora al catálogo el diagnóstico escrito a mano y lo deja seleccionado. */
+async function añadirDiagnosticoAlCatalogo() {
+  const slug = document.getElementById('f-tipo-cirugia').value;
+  const nombre = document.getElementById('f-diagnostico-otro').value.trim();
+  const tipo = tipoPorSlug(slug);
+  if (!tipo) { showToast('Elige primero el tipo de cirugía', 'warn'); return; }
+  if (!nombre) { showToast('Escribe el diagnóstico', 'warn'); return; }
+  const onco = tipo.tiene_oncologico && confirm(
+    `¿«${nombre}» es un diagnóstico oncológico?\n\nSi lo es, se mostrará el bloque de TNM y seguimiento.`);
+  try {
+    await api('POST', '/api/catalogos/diagnosticos',
+      { nombre, tipo_id: tipo.id, es_oncologico: !!onco });
+    await loadCatalogo();
+    onTipoCirugia();
+    document.getElementById('f-diagnostico').value = nombre;
+    onDiagnostico();
+    showToast('Diagnóstico añadido al catálogo');
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+/** Igual para la intervención. Necesita que el diagnóstico esté en el catálogo. */
+async function añadirIntervencionAlCatalogo() {
+  const slug = document.getElementById('f-tipo-cirugia').value;
+  const diagSel = document.getElementById('f-diagnostico').value;
+  const nombre = document.getElementById('f-intervencion-otro').value.trim();
+  if (!nombre) { showToast('Escribe la intervención', 'warn'); return; }
+  if (diagSel === OTRO || !diagSel) {
+    showToast('Añade primero el diagnóstico al catálogo', 'warn');
+    return;
+  }
+  const d = diagnosticoPorNombre(slug, diagSel);
+  if (!d) { showToast('No se encontró el diagnóstico en el catálogo', 'error'); return; }
+  try {
+    await api('POST', '/api/catalogos/intervenciones',
+      { nombre, diagnostico_id: d.id });
+    await loadCatalogo();
+    onTipoCirugia();
+    document.getElementById('f-diagnostico').value = diagSel;
+    onDiagnostico();
+    document.getElementById('f-intervencion').value = nombre;
+    onIntervencion();
+    showToast('Intervención añadida al catálogo');
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 function onAbordaje() {
@@ -482,8 +577,11 @@ function collectFormData() {
     fecha_nacimiento: g('f-fecha-nacimiento') || null,
     edad: g('f-edad') ? parseInt(g('f-edad')) : null,
     sexo: g('f-sexo'), asa: g('f-asa'), cirujano: g('f-cirujano'),
-    ingreso_cma: g('f-ingreso-cma'), diagnostico: g('f-diagnostico'),
-    intervencion: g('f-intervencion'), urgencia: g('f-urgencia'),
+    ingreso_cma: g('f-ingreso-cma'),
+    // Si se eligió "Otro" vale lo escrito a mano, no el marcador interno
+    diagnostico: g('f-diagnostico') === OTRO ? (g('f-diagnostico-otro') || null) : g('f-diagnostico'),
+    intervencion: g('f-intervencion') === OTRO ? (g('f-intervencion-otro') || null) : g('f-intervencion'),
+    urgencia: g('f-urgencia'),
     abordaje: g('f-abordaje'), conversion: g('f-conversion') || null,
     tiempo_quirurgico: g('f-tiempo-quirurgico') ? parseInt(g('f-tiempo-quirurgico')) : null,
     clavien_dindo: g('f-clavien-dindo'), tipo_complicacion: g('f-tipo-complicacion') || null,
@@ -603,7 +701,7 @@ function populateForm(tipo, record) {
 
 // ── Save / Edit ──────────────────────────────────────────────
 async function saveRecord() {
-  if (!validateStep(currentStep)) return;
+  if (!validateAll()) return;
   const { data } = collectFormData();
   if (!data.tipo_id) { showToast('Selecciona un tipo de cirugía', 'error'); return; }
   try {
@@ -642,7 +740,9 @@ function buildFiltersQuery() {
   const cir = document.getElementById('db-filter-cirujano').value;
   const asa = document.getElementById('db-filter-asa').value;
   const nhc = document.getElementById('db-search-nhc').value;
-  const p = new URLSearchParams({ page: dbCurrentPage, page_size: 20 });
+  const p = new URLSearchParams({
+    page: dbCurrentPage, page_size: 20, orden: dbOrden, dir: dbDir,
+  });
   if (fd) p.set('fecha_desde', fd);
   if (fh) p.set('fecha_hasta', fh);
   if (cir) p.set('cirujano', cir);
@@ -668,6 +768,7 @@ async function loadDbTable() {
     const r = await api('GET', url);
     const rows = r?.items || [];
     const total = r?.total || 0;
+    pintarFlechasOrden();
 
     tbody.innerHTML = '';
     if (!rows.length) {
@@ -736,6 +837,41 @@ function switchDbTab(tab) {
   dbCurrentPage = 1;
   construirDbTabs();
   loadDbTable();
+}
+
+/**
+ * Ordena por la columna pinchada. La ordenación la hace el servidor porque la
+ * tabla está paginada: hacerlo en el navegador sólo ordenaría los 20 visibles.
+ */
+function ordenarPor(columna) {
+  if (dbOrden === columna) {
+    dbDir = dbDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    dbOrden = columna;
+    // El id y la fecha se suelen querer de más reciente a más antiguo; los
+    // textos, alfabéticamente
+    dbDir = ['id', 'fecha_intervencion'].includes(columna) ? 'desc' : 'asc';
+  }
+  dbCurrentPage = 1;
+  loadDbTable();
+}
+
+function pintarFlechasOrden() {
+  document.querySelectorAll('.th-orden').forEach(th => {
+    th.classList.remove('asc', 'desc');
+    if (th.dataset.orden === dbOrden) th.classList.add(dbDir);
+  });
+}
+
+/** Se enlaza una sola vez: las cabeceras son fijas en el HTML. */
+function activarCabecerasOrden() {
+  document.querySelectorAll('.th-orden').forEach(th => {
+    if (th.dataset.enlazado) return;
+    th.dataset.enlazado = '1';
+    th.title = 'Pincha para ordenar';
+    th.onclick = () => ordenarPor(th.dataset.orden);
+  });
+  pintarFlechasOrden();
 }
 
 function dbChangePage(delta) {
@@ -1294,8 +1430,15 @@ function _selectDiagnostico(i, f) {
     `<option value="${d.nombre}" ${d.nombre === f.diagnostico ? 'selected' : ''}>${d.nombre}</option>`).join('');
   const original = f.diagnostico_bruto
     ? `<div class="text-xs text-gray-400 truncate" title="${f.diagnostico_bruto}">${f.diagnostico_bruto}</div>` : '';
-  return original + `<select onchange="impFilas[${i}].diagnostico = this.value" class="input text-xs py-1">
-            <option value="">— sin asignar —</option>${opts}</select>`;
+  const otro = f.diagnostico_otro
+    ? `<input type="text" value="${f.diagnostico || ''}" placeholder="escribe el diagnóstico"
+              oninput="impFilas[${i}].diagnostico = this.value; pintarContadorImport()"
+              class="input text-xs py-1 mt-1"/>` : '';
+  // Debe repintar, no sólo guardar: la lista de intervenciones depende de esto
+  return original + `<select onchange="cambiarDiagnosticoImport(${i}, this.value)" class="input text-xs py-1">
+            <option value="">— sin asignar —</option>${opts}
+            <option value="__OTRO__" ${f.diagnostico_otro ? 'selected' : ''}>— Otro (escribir) —</option>
+          </select>` + otro;
 }
 
 function _selectIntervencion(i, f) {
@@ -1318,8 +1461,44 @@ function _selectIntervencion(i, f) {
   }
   const original = f.procedimiento_bruto
     ? `<div class="text-xs text-gray-400 truncate" title="${f.procedimiento_bruto}">${f.procedimiento_bruto}</div>` : '';
-  return original + `<select onchange="impFilas[${i}].intervencion = this.value" class="input text-xs py-1">
-            <option value="">— sin asignar —</option>${opts}</select>`;
+  const otro = f.intervencion_otro
+    ? `<input type="text" value="${f.intervencion || ''}" placeholder="escribe la intervención"
+              oninput="impFilas[${i}].intervencion = this.value; pintarContadorImport()"
+              class="input text-xs py-1 mt-1"/>` : '';
+  const aviso = !f.diagnostico && !f.diagnostico_otro
+    ? '<div class="text-xs text-gray-400 italic">elige antes el diagnóstico</div>' : '';
+  return original + aviso +
+    `<select onchange="cambiarIntervencionImport(${i}, this.value)" class="input text-xs py-1">
+       <option value="">— sin asignar —</option>${opts}
+       <option value="__OTRO__" ${f.intervencion_otro ? 'selected' : ''}>— Otro (escribir) —</option>
+     </select>` + otro;
+}
+
+function cambiarDiagnosticoImport(i, valor) {
+  const f = impFilas[i];
+  if (valor === '__OTRO__') {
+    f.diagnostico_otro = true;
+    f.diagnostico = '';                 // lo escribirá en el campo de texto
+  } else {
+    f.diagnostico_otro = false;
+    f.diagnostico = valor;
+  }
+  // La intervención cuelga del diagnóstico: hay que recalcular su lista
+  f.intervencion = '';
+  f.intervencion_otro = false;
+  pintarFilasImport();
+}
+
+function cambiarIntervencionImport(i, valor) {
+  const f = impFilas[i];
+  if (valor === '__OTRO__') {
+    f.intervencion_otro = true;
+    f.intervencion = '';
+  } else {
+    f.intervencion_otro = false;
+    f.intervencion = valor;
+  }
+  pintarFilasImport();
 }
 
 function cambiarGrupoImport(i, valor) {
@@ -1394,6 +1573,68 @@ function cancelarImportacion() {
   document.getElementById('imp-file').value = '';
 }
 
+/** Diagnósticos e intervenciones escritos a mano que no existen en el catálogo. */
+function _nuevosDelCatalogo() {
+  const fuera = [];
+  const yaVisto = new Set();
+  impFilas.filter(f => f.incluir && f.importable).forEach(f => {
+    const tipo = CATALOGO.find(t => t.id === f.tipo_id);
+    if (!tipo) return;
+
+    if (f.diagnostico && !tipo.diagnosticos.some(d => d.nombre === f.diagnostico)) {
+      const clave = `d|${tipo.id}|${f.diagnostico}`;
+      if (!yaVisto.has(clave)) {
+        yaVisto.add(clave);
+        fuera.push({ clase: 'diagnostico', tipo_id: tipo.id,
+                     texto: `${f.diagnostico}  (${tipo.nombre})`, nombre: f.diagnostico });
+      }
+    }
+    // Una intervención cuelga siempre de un diagnóstico: sin él no hay dónde
+    // colocarla, así que no se propone (antes se listaban y ensuciaban el aviso)
+    if (f.intervencion && f.diagnostico) {
+      const diag = tipo.diagnosticos.find(d => d.nombre === f.diagnostico);
+      const dentro = diag && diag.intervenciones.some(x => x.nombre === f.intervencion);
+      if (!dentro) {
+        const clave = `i|${tipo.id}|${f.diagnostico}|${f.intervencion}`;
+        if (!yaVisto.has(clave)) {
+          yaVisto.add(clave);
+          fuera.push({ clase: 'intervencion', tipo_id: tipo.id,
+                       diagnostico: f.diagnostico, nombre: f.intervencion,
+                       texto: `${f.intervencion}  (en ${f.diagnostico})` });
+        }
+      }
+    }
+  });
+  return fuera;
+}
+
+/** Crea en el catálogo lo escrito a mano. Los diagnósticos primero: las
+    intervenciones necesitan que su diagnóstico ya exista. */
+async function _añadirAlCatalogo(nuevos) {
+  let creados = 0;
+  for (const n of nuevos.filter(x => x.clase === 'diagnostico')) {
+    try {
+      await api('POST', '/api/catalogos/diagnosticos',
+        { nombre: n.nombre, tipo_id: n.tipo_id, es_oncologico: false });
+      creados++;
+    } catch (e) { console.warn('No se pudo crear el diagnóstico', n.nombre, e.message); }
+  }
+  await loadCatalogo();
+
+  for (const n of nuevos.filter(x => x.clase === 'intervencion' && x.diagnostico)) {
+    const tipo = CATALOGO.find(t => t.id === n.tipo_id);
+    const diag = tipo && tipo.diagnosticos.find(d => d.nombre === n.diagnostico);
+    if (!diag) continue;
+    try {
+      await api('POST', '/api/catalogos/intervenciones',
+        { nombre: n.nombre, diagnostico_id: diag.id });
+      creados++;
+    } catch (e) { console.warn('No se pudo crear la intervención', n.nombre, e.message); }
+  }
+  await loadCatalogo();
+  if (creados) showToast(`${creados} entrada(s) añadidas al catálogo`);
+}
+
 async function confirmarImportacion() {
   const filas = impFilas.filter(f => f.incluir && f.importable).map(f => ({
     nhc: f.nhc, fecha_intervencion: f.fecha_intervencion, tipo_id: f.tipo_id,
@@ -1408,6 +1649,19 @@ async function confirmarImportacion() {
   if (sinDiag) msg += `\n\n${sinDiag} van sin diagnóstico asignado: podrás completarlos después desde Base de Datos.`;
   msg += '\n\n¿Continuar?';
   if (!confirm(msg)) return;
+
+  // Lo escrito a mano puede incorporarse al catálogo para no repetirlo
+  const nuevos = _nuevosDelCatalogo();
+  if (nuevos.length) {
+    const lista = nuevos.slice(0, 12).map(n => `  · ${n.texto}`).join('\n');
+    if (confirm(
+      `Has escrito ${nuevos.length} diagnóstico(s)/intervención(es) que no están en el catálogo:\n\n` +
+      lista + (nuevos.length > 12 ? `\n  … y ${nuevos.length - 12} más` : '') +
+      '\n\n¿Los añado al catálogo para tenerlos disponibles la próxima vez?'
+    )) {
+      await _añadirAlCatalogo(nuevos);
+    }
+  }
 
   try {
     const r = await api('POST', '/api/import/lista-espera/confirmar', { filas });
